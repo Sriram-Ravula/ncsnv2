@@ -1,10 +1,10 @@
 training:
   batch_size: 32
   n_epochs: 500000
-  n_iters: 80001
-  snapshot_freq: 5000
-  snapshot_sampling: true
-  anneal_power: 2
+  n_iters: 80001 
+  snapshot_freq: 5000 
+  snapshot_sampling: true 
+  anneal_power: 2 
   log_all_sigmas: false
 
 sampling:
@@ -15,7 +15,7 @@ sampling:
   ckpt_id: 80000
   final_only: true
   fid: false
-  denoise: true
+  denoise: true #whether to add \sigma^2 * s_theta(x_T, \sigma_T) to the final output
   num_samples4fid: 10000
   inpainting: false
   interpolation: false
@@ -48,13 +48,13 @@ data:
   num_workers: 8
 
 model:
-  sigma_begin: 348
-  num_classes: 2311
-  ema: true
-  ema_rate: 0.999
+  sigma_begin: 348 #\sigma_1 - the first noise scale
+  num_classes: 2311 #L - the number of noise levels to consider
+  ema: true #use an exponential moving avergae?
+  ema_rate: 0.999 #m, for parameters: \theta^' = m*\theta^' + (1 - m)\theta_i
   spec_norm: false
-  sigma_dist: geometric
-  sigma_end: 0.01
+  sigma_dist: geometric #the progression of the sigma values - Q: do we have to worry about the \gamma ratio or is it automatically set for us?
+  sigma_end: 0.01 #\sigma_L - the last noise scale
   normalization: InstanceNorm++
   nonlinearity: elu
   ngf: 128
