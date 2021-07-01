@@ -25,7 +25,7 @@ __all__ = ['NCSNRunner']
 def get_model(config):
     if config.data.dataset == 'CIFAR10' or config.data.dataset == 'CELEBA':
         return NCSNv2(config).to(config.device)
-    elif config.data.dataset == "FFHQ":
+    elif config.data.dataset == "FFHQ" or config.data.dataset == 'VELOCITY_FINE':
         return NCSNv2Deepest(config).to(config.device)
     elif config.data.dataset == 'LSUN':
         return NCSNv2Deeper(config).to(config.device)
@@ -42,7 +42,7 @@ class NCSNRunner():
         dataloader = DataLoader(dataset, batch_size=self.config.training.batch_size, shuffle=True,
                                 num_workers=self.config.data.num_workers)
         test_loader = DataLoader(test_dataset, batch_size=self.config.training.batch_size, shuffle=True,
-                                 num_workers=self.config.data.num_workers, drop_last=True)
+                                 num_workers=self.config.data.num_workers, drop_last=True) #drop_last remvoes the last incomplete batch that doesn't fill batch size
         test_iter = iter(test_loader)
         self.config.input_dim = self.config.data.image_size ** 2 * self.config.data.channels
 
@@ -50,7 +50,7 @@ class NCSNRunner():
 
         score = get_model(self.config)
 
-        score = torch.nn.DataParallel(score)
+        score = torch.nn.DataParallel(score) #here is where the parallelism comes in!
         optimizer = get_optimizer(self.config, score.parameters())
 
         start_epoch = 0
@@ -110,7 +110,7 @@ class NCSNRunner():
             def test_tb_hook():
                 pass
 
-        for epoch in range(start_epoch, self.config.training.n_epochs):
+        for epoch in tqdm.tqdm(range(start_epoch, self.config.training.n_epochs)):
             for i, (X, y) in enumerate(dataloader):
                 score.train()
                 step += 1

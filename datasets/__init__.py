@@ -4,6 +4,7 @@ import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10, LSUN
 from datasets.celeba import CelebA
 from datasets.ffhq import FFHQ
+from datasets.velocity_fine import Velocity
 from torch.utils.data import Subset
 import numpy as np
 
@@ -95,6 +96,24 @@ def get_dataset(args, config):
         indices = list(range(num_items))
         random_state = np.random.get_state()
         np.random.seed(2019)
+        np.random.shuffle(indices)
+        np.random.set_state(random_state)
+        train_indices, test_indices = indices[:int(num_items * 0.9)], indices[int(num_items * 0.9):]
+        test_dataset = Subset(dataset, test_indices)
+        dataset = Subset(dataset, train_indices)
+    
+    elif config.data.dataset == 'VELOCITY_FINE':
+        tran_transform = transforms.Compose([
+            transforms.Resize([256, 256]),
+            transforms.RandomHorizontalFlip(p=0.5)
+        ])
+
+        dataset = Velocity(path=os.path.join(args.exp, 'datasets', '8047_vel_imgs.npy'), transform=tran_transform)
+
+        num_items = len(dataset)
+        indices = list(range(num_items))
+        random_state = np.random.get_state()
+        np.random.seed(2240)
         np.random.shuffle(indices)
         np.random.set_state(random_state)
         train_indices, test_indices = indices[:int(num_items * 0.9)], indices[int(num_items * 0.9):]
