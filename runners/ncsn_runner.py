@@ -38,28 +38,34 @@ class NCSNRunner():
         os.makedirs(args.log_sample_path, exist_ok=True)
 
     def train(self):
+        #Grab the dataset and set up the loaders
         dataset, test_dataset = get_dataset(self.args, self.config)
         dataloader = DataLoader(dataset, batch_size=self.config.training.batch_size, shuffle=True,
                                 num_workers=self.config.data.num_workers)
         test_loader = DataLoader(test_dataset, batch_size=self.config.training.batch_size, shuffle=True,
-                                 num_workers=self.config.data.num_workers, drop_last=True) #drop_last remvoes the last incomplete batch that doesn't fill batch size
+                                 num_workers=self.config.data.num_workers, drop_last=True) #drop_last removes the last incomplete batch that doesn't fill batch size
+        
         test_iter = iter(test_loader)
+
         self.config.input_dim = self.config.data.image_size ** 2 * self.config.data.channels
 
         tb_logger = self.config.tb_logger
 
+        #set up the model and parallelelize
         score = get_model(self.config)
+        score = torch.nn.DataParallel(score) #TODO change this to DistributedDataParallel
 
-        score = torch.nn.DataParallel(score) #here is where the parallelism comes in!
         optimizer = get_optimizer(self.config, score.parameters())
 
         start_epoch = 0
         step = 0
 
+        #Set up the exponential moving average
         if self.config.model.ema:
             ema_helper = EMAHelper(mu=self.config.model.ema_rate)
             ema_helper.register(score)
 
+        #If desired, pick up training where we left off
         if self.args.resume_training:
             states = torch.load(os.path.join(self.args.log_path, 'checkpoint.pth'))
             score.load_state_dict(states[0])
@@ -71,6 +77,7 @@ class NCSNRunner():
             if self.config.model.ema:
                 ema_helper.load_state_dict(states[4])
 
+        #grab all L noise levels
         sigmas = get_sigmas(self.config)
 
         if self.config.training.log_all_sigmas:
@@ -110,6 +117,7 @@ class NCSNRunner():
             def test_tb_hook():
                 pass
 
+        #main training loop
         for epoch in tqdm.tqdm(range(start_epoch, self.config.training.n_epochs)):
             for i, (X, y) in enumerate(dataloader):
                 score.train()
@@ -133,9 +141,11 @@ class NCSNRunner():
                 if self.config.model.ema:
                     ema_helper.update(score)
 
+                #If n_iters < n_epochs * len(dataset) / (batch_size * n_GPUs), then we stop before we hit n_epochs
                 if step >= self.config.training.n_iters:
                     return 0
 
+                #every 100 steps, use the EMA parameters to calc test loss
                 if step % 100 == 0:
                     if self.config.model.ema:
                         test_score = ema_helper.ema_copy(score)
@@ -162,6 +172,7 @@ class NCSNRunner():
 
                         del test_score
 
+                #every snapshot_freq iterations, save the weights and sample if desired
                 if step % self.config.training.snapshot_freq == 0:
                     states = [
                         score.state_dict(),
@@ -203,8 +214,7 @@ class NCSNRunner():
                         sample = inverse_data_transform(self.config, sample)
 
                         #MY ADDITION: SAVE THE ACTUAL RAW SAMPLES AS NUMPY ARRAYS
-                        sample_npy = sample.cpu().numpy()
-                        np.save(os.path.join(self.args.log_sample_path, 'samples_{}.npy'.format(step)), sample_npy)
+                        np.save(os.path.join(self.args.log_sample_path, 'samples_{}.npy'.format(step)), sample.cpu().numpy())
 
                         image_grid = make_grid(sample, 6)
                         save_image(image_grid,
