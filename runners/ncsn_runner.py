@@ -202,6 +202,10 @@ class NCSNRunner():
 
                         sample = inverse_data_transform(self.config, sample)
 
+                        #MY ADDITION: SAVE THE ACTUAL RAW SAMPLES AS NUMPY ARRAYS
+                        sample_npy = sample.cpu().numpy()
+                        np.save(os.path.join(self.args.log_sample_path, 'samples_{}.npy'.format(step)), sample_npy)
+
                         image_grid = make_grid(sample, 6)
                         save_image(image_grid,
                                    os.path.join(self.args.log_sample_path, 'image_grid_{}.png'.format(step)))
