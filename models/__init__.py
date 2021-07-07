@@ -23,16 +23,16 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
 
     with torch.no_grad():
         for c, sigma in enumerate(sigmas):
-            labels = torch.ones(x_mod.shape[0], device=x_mod.device) * c
+            labels = torch.ones(x_mod.shape[0], device=x_mod.device) * c #dummy target 1...T depending on iteration
             labels = labels.long()
             step_size = step_lr * (sigma / sigmas[-1]) ** 2
             for s in range(n_steps_each):
                 grad = scorenet(x_mod, labels)
 
-                noise = torch.randn_like(x_mod)
+                noise = torch.randn_like(x_mod) 
                 grad_norm = torch.norm(grad.view(grad.shape[0], -1), dim=-1).mean()
                 noise_norm = torch.norm(noise.view(noise.shape[0], -1), dim=-1).mean()
-                x_mod = x_mod + step_size * grad + noise * np.sqrt(step_size * 2)
+                x_mod = x_mod + step_size * grad + noise * np.sqrt(step_size * 2) #core Langevin step
 
                 image_norm = torch.norm(x_mod.view(x_mod.shape[0], -1), dim=-1).mean()
                 snr = np.sqrt(step_size / 2.) * grad_norm / noise_norm

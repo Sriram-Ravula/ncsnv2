@@ -104,7 +104,7 @@ def get_dataset(args, config):
     
     elif config.data.dataset == 'VELOCITY_FINE':
         tran_transform = transforms.Compose([
-            transforms.Resize([256, 256]),
+            transforms.Resize([config.data.image_size, config.data.image_size]),
             transforms.RandomHorizontalFlip(p=0.5)
         ])
 
