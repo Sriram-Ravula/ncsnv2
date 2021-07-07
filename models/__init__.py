@@ -18,7 +18,7 @@ def get_sigmas(config):
 
 @torch.no_grad()
 def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=0.000008,
-                             final_only=False, verbose=False, denoise=True):
+                             final_only=False, verbose=False, denoise=True, add_noise=True):
     images = []
 
     with torch.no_grad():
@@ -29,12 +29,22 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
             for s in range(n_steps_each):
                 grad = scorenet(x_mod, labels)
 
-                noise = torch.randn_like(x_mod) 
+                #choose whether to add random noise during each gradient ascent step
+                if add_noise:
+                    noise = torch.randn_like(x_mod) 
+                else:
+                    noise = torch.zeros_like(x_mod)
+
+                #calculate l2 norms of gradient (score) and the additive noise for logging
                 grad_norm = torch.norm(grad.view(grad.shape[0], -1), dim=-1).mean()
                 noise_norm = torch.norm(noise.view(noise.shape[0], -1), dim=-1).mean()
+
                 x_mod = x_mod + step_size * grad + noise * np.sqrt(step_size * 2) #core Langevin step
 
+                #calc l2 norm of iterate variable for logging
                 image_norm = torch.norm(x_mod.view(x_mod.shape[0], -1), dim=-1).mean()
+
+                #calc snr as scaled version of [||s(x, \sigma_i)|| / ||z_t||] and mean of score for logging
                 snr = np.sqrt(step_size / 2.) * grad_norm / noise_norm
                 grad_mean_norm = torch.norm(grad.mean(dim=0).view(-1)) ** 2 * sigma ** 2
 
@@ -44,6 +54,7 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
                     print("level: {}, step_size: {}, grad_norm: {}, image_norm: {}, snr: {}, grad_mean_norm: {}".format(
                         c, step_size, grad_norm.item(), image_norm.item(), snr.item(), grad_mean_norm.item()))
 
+        #final denoising step if desired - removes the very last additive z_L 
         if denoise:
             last_noise = (len(sigmas) - 1) * torch.ones(x_mod.shape[0], device=x_mod.device)
             last_noise = last_noise.long()
