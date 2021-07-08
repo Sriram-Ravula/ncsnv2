@@ -66,6 +66,89 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
         else:
             return images
 
+@torch.no_grad()
+def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.000008,
+                             final_only=False, verbose=False, denoise=True, add_noise=True, 
+                             decimate_sigma=None, mode='denoising'):
+    images = []
+
+    #if desired, decimate the number of noise scales to speed up inference
+    if decimate_sigma is not None:
+        sigmas_temp = sigmas[0:-1:decimate_sigma].tolist() #grab every decimate_sigma'th value except the last one
+        sigmas_temp.append(sigmas[-1]) #add the last sigma value back to the list
+        sigmas = sigmas_temp #swap the new decimated sigma list for the main one
+
+    mse = torch.nn.MSELoss()
+
+    N, C, H, W = x_mod.shape
+
+    with torch.no_grad():
+        #outer loop over noise scales
+        for c, sigma in enumerate(sigmas):
+            #dummy target 1...T depending on iteration
+            labels = torch.ones(x_mod.shape[0], device=x_mod.device) * c 
+            labels = labels.long()
+
+            step_size = step_lr * (sigma / sigmas[-1]) ** 2
+            #Inner loop over T
+            for s in range(n_steps_each):
+                #s(x_t) ~= \grad_x log p(x) -- THE PRIOR
+                grad = scorenet(x_mod, labels)
+
+                prior_norm = torch.norm(grad.view(grad.shape[0], -1), dim=-1).mean()
+                prior_mean_norm = torch.norm(grad.mean(dim=0).view(-1)) ** 2 * sigma ** 2
+
+                #calculate the maximum likelihood gradient - i.e. MSE gradient
+                #A should be [N, m, C * H * W], x should be [N, C, H, W], y should be [N, m, 1]
+                if mode=='denoising':
+                    Axt = x_mod 
+                    mle_grad = Axt - y #for denoising, y has same dimension as x
+                else:
+                    Axt = torch.matmul(A, x_mod.view(-1, C * H * W, 1))
+                    mle_grad = torch.matmul(torch.transpose(A, 1, 2), Axt - y).view(N, C, H, W) 
+
+                likelihood_norm = torch.norm(mle_grad.view(mle_grad.shape[0], -1), dim=-1).mean()
+                likelihood_mean_norm = torch.norm(mle_grad.mean(dim=0).view(-1)) ** 2
+
+                #The final gradient
+                grad = grad + mle_grad
+
+                grad_norm = torch.norm(grad.view(grad.shape[0], -1), dim=-1).mean()
+                grad_mean_norm = torch.norm(grad.mean(dim=0).view(-1)) ** 2
+
+                #choose whether to add random noise during each gradient ascent step
+                if add_noise:
+                    noise = torch.randn_like(x_mod) 
+                else:
+                    noise = torch.zeros_like(x_mod)
+
+                x_mod = x_mod + step_size * grad + noise * np.sqrt(step_size * 2) #core Langevin step
+
+                #calc l2 norm of iterate variable for logging
+                image_norm = torch.norm(x_mod.view(x_mod.shape[0], -1), dim=-1).mean()
+                noise_norm = torch.norm(noise.view(noise.shape[0], -1), dim=-1).mean()
+                snr = np.sqrt(step_size / 2.) * prior_norm / noise_norm
+                mse_iter = mse(Axt, y)
+
+                if not final_only:
+                    images.append(x_mod.to('cpu'))
+                if verbose:
+                    print("level: {}, step_size: {}, prior_norm: {}, likelihood_norm: {}, grad_norm: {} \
+                            image_norm: {}, snr: {}, prior_mean_norm: {}, likelihood_mean_norm: {}, grad_mean_norm: {}, mse: {}".format( \
+                        c, step_size, prior_norm.item(), likelihood_norm.item(), grad_norm.item(), image_norm.item(), \
+                        snr.item(), prior_mean_norm.item(), likelihood_mean_norm.item(), grad_mean_norm.item(), mse_iter.item()))
+
+        #final denoising step if desired - removes the very last additive z_L 
+        if denoise:
+            last_noise = (len(sigmas) - 1) * torch.ones(x_mod.shape[0], device=x_mod.device)
+            last_noise = last_noise.long()
+            x_mod = x_mod + sigmas[-1] ** 2 * scorenet(x_mod, last_noise)
+            images.append(x_mod.to('cpu'))
+
+        if final_only:
+            return [x_mod.to('cpu')]
+        else:
+            return images
 
 @torch.no_grad()
 def anneal_Langevin_dynamics_inpainting(x_mod, refer_image, scorenet, sigmas, image_size,
@@ -76,8 +159,12 @@ def anneal_Langevin_dynamics_inpainting(x_mod, refer_image, scorenet, sigmas, im
 
     images = []
 
+    #refer_image is the untainted x (?)
+    #right now this only works with 3-channel images
     refer_image = refer_image.unsqueeze(1).expand(-1, x_mod.shape[1], -1, -1, -1)
     refer_image = refer_image.contiguous().view(-1, 3, image_size, image_size)
+
+    
     x_mod = x_mod.view(-1, 3, image_size, image_size)
     cols = image_size // 2
     half_refer_image = refer_image[..., :cols]
