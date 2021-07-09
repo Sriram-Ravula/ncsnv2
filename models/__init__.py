@@ -102,16 +102,16 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
                 #A should be [N, m, C * H * W], x should be [N, C, H, W], y should be [N, m, 1]
                 if mode=='denoising':
                     Axt = x_mod 
-                    mle_grad = Axt - y #for denoising, y has same dimension as x
+                    mle_grad = (Axt - y) / N #for denoising, y has same dimension as x
                 else:
                     Axt = torch.matmul(A, x_mod.view(-1, C * H * W, 1))
-                    mle_grad = torch.matmul(torch.transpose(A, 1, 2), Axt - y).view(N, C, H, W) 
+                    mle_grad = torch.matmul(torch.transpose(A, 1, 2), Axt - y).view(N, C, H, W) / N
 
                 likelihood_norm = torch.norm(mle_grad.view(mle_grad.shape[0], -1), dim=-1).mean()
                 likelihood_mean_norm = torch.norm(mle_grad.mean(dim=0).view(-1)) ** 2
 
                 #The final gradient
-                grad = grad + mle_grad
+                grad = grad - mle_grad
 
                 grad_norm = torch.norm(grad.view(grad.shape[0], -1), dim=-1).mean()
                 grad_mean_norm = torch.norm(grad.mean(dim=0).view(-1)) ** 2
@@ -133,8 +133,8 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
                 if not final_only:
                     images.append(x_mod.to('cpu'))
                 if verbose:
-                    print("level: {}, step_size: {}, prior_norm: {}, likelihood_norm: {}, grad_norm: {} \
-                            image_norm: {}, snr: {}, prior_mean_norm: {}, likelihood_mean_norm: {}, grad_mean_norm: {}, mse: {}".format( \
+                    print("level: {}, step_size: {:.4f}, prior_norm: {:.4f}, likelihood_norm: {:.4f}, grad_norm: {:.4f} \
+                            image_norm: {:.4f}, snr: {:.4f}, prior_mean_norm: {:.4f}, likelihood_mean_norm: {:.4f}, grad_mean_norm: {:.4f}, mse: {:.4f}".format( \
                         c, step_size, prior_norm.item(), likelihood_norm.item(), grad_norm.item(), image_norm.item(), \
                         snr.item(), prior_mean_norm.item(), likelihood_mean_norm.item(), grad_mean_norm.item(), mse_iter.item()))
 
