@@ -69,18 +69,24 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
 @torch.no_grad()
 def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.000008,
                              final_only=False, verbose=False, denoise=True, add_noise=True, 
-                             decimate_sigma=None, mode='denoising'):
+                             decimate_sigma=None, mode=None, true_x=None):
     images = []
 
     #if desired, decimate the number of noise scales to speed up inference
     if decimate_sigma is not None:
-        sigmas_temp = sigmas[0:-1:decimate_sigma].tolist() #grab every decimate_sigma'th value except the last one
-        sigmas_temp.append(sigmas[-1]) #add the last sigma value back to the list
+        #sigmas_temp = sigmas[0:-1:decimate_sigma].tolist() #grab every decimate_sigma'th value except the last one
+        #sigmas_temp.append(sigmas[-1]) #add the last sigma value back to the list
+        num_sigmas = sigmas.shape[0] // decimate_sigma
+        sigmas_temp = []
+        for i in range(num_sigmas):
+            sigmas_temp.append(sigmas[-1])
         sigmas = sigmas_temp #swap the new decimated sigma list for the main one
 
     mse = torch.nn.MSELoss()
 
     N, C, H, W = x_mod.shape
+
+    steps = np.geomspace(start=5, stop=1, num=len(sigmas))
 
     with torch.no_grad():
         #outer loop over noise scales
@@ -89,7 +95,9 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
             labels = torch.ones(x_mod.shape[0], device=x_mod.device) * c 
             labels = labels.long()
 
-            step_size = step_lr * (sigma / sigmas[-1]) ** 2
+            #step_size = 1e5 * step_lr * (sigma / sigmas[-1]) ** 2
+            step_size = steps[c]
+
             #Inner loop over T
             for s in range(n_steps_each):
                 #s(x_t) ~= \grad_x log p(x) -- THE PRIOR
@@ -104,8 +112,8 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
                     Axt = x_mod 
                     mle_grad = (Axt - y) / N #for denoising, y has same dimension as x
                 else:
-                    Axt = torch.matmul(A, x_mod.view(-1, C * H * W, 1))
-                    mle_grad = torch.matmul(torch.transpose(A, 1, 2), Axt - y).view(N, C, H, W) / N
+                    Axt = torch.matmul(A, x_mod.view(N, -1, 1))
+                    mle_grad = -1 * torch.matmul(torch.transpose(A, -2, -1), Axt - y).view(N, C, H, W) / N
 
                 likelihood_norm = torch.norm(mle_grad.view(mle_grad.shape[0], -1), dim=-1).mean()
                 likelihood_mean_norm = torch.norm(mle_grad.mean(dim=0).view(-1)) ** 2
@@ -129,14 +137,19 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
                 noise_norm = torch.norm(noise.view(noise.shape[0], -1), dim=-1).mean()
                 snr = np.sqrt(step_size / 2.) * prior_norm / noise_norm
                 mse_iter = mse(Axt, y)
+                if true_x is not None:
+                    mse_true = mse(true_x, x_mod)
 
                 if not final_only:
                     images.append(x_mod.to('cpu'))
                 if verbose:
-                    print("level: {}, step_size: {:.4f}, prior_norm: {:.4f}, likelihood_norm: {:.4f}, grad_norm: {:.4f} \
-                            image_norm: {:.4f}, snr: {:.4f}, prior_mean_norm: {:.4f}, likelihood_mean_norm: {:.4f}, grad_mean_norm: {:.4f}, mse: {:.4f}".format( \
+                    print("\nlevel: {}, step_size: {:.4f}, prior_norm: {:.4f}, likelihood_norm: {:.4f}, grad_norm: {:.4f} \
+                            image_norm: {:.4f}, snr: {:.4f}, prior_mean_norm: {:.4f}, likelihood_mean_norm: {:.4f}, grad_mean_norm: {:.4f}, train_mse: {:.4f}".format( \
                         c, step_size, prior_norm.item(), likelihood_norm.item(), grad_norm.item(), image_norm.item(), \
                         snr.item(), prior_mean_norm.item(), likelihood_mean_norm.item(), grad_mean_norm.item(), mse_iter.item()))
+                    
+                    if true_x is not None:
+                        print(" true_mse: {:.4f}".format(mse_true.item()))
 
         #final denoising step if desired - removes the very last additive z_L 
         if denoise:
