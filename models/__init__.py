@@ -85,8 +85,11 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
     mse = torch.nn.MSELoss()
 
     N, C, H, W = x_mod.shape
+    m = A.shape[-2]
 
     steps = np.geomspace(start=5, stop=1, num=len(sigmas))
+
+    c2 = 1
 
     with torch.no_grad():
         #outer loop over noise scales
@@ -113,11 +116,17 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
                     mle_grad = (Axt - y) * (1 / N) #for denoising, y has same dimension as x
                 else:
                     Axt = torch.matmul(A, x_mod.view(N, -1, 1))
-                    mle_grad = torch.matmul(torch.transpose(A, -2, -1), Axt - y).view(N, C, H, W) * (1 / N) #MSE gradient
+                    mle_grad = torch.matmul(torch.transpose(A, -2, -1), Axt - y).view(N, C, H, W) * c2 #MSE gradient
                     #mle_grad = torch.matmul(torch.transpose(A, -2, -1), torch.sign(Axt - y)).view(N, C, H, W) * (1 / N) #L1 error gradient
 
                 likelihood_norm = torch.norm(mle_grad.view(mle_grad.shape[0], -1), dim=-1).mean()
                 #likelihood_mean_norm = torch.norm(mle_grad.mean(dim=0).view(-1)) ** 2
+
+                if c == 0 and s == 0:
+                    c2 = prior_norm.item() / likelihood_norm.item()
+                    mle_grad = mle_grad * c2 #MSE gradient
+                    likelihood_norm = torch.norm(mle_grad.view(mle_grad.shape[0], -1), dim=-1).mean()
+
 
                 #The final gradient
                 grad = grad - mle_grad
