@@ -86,7 +86,7 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
 
     N, C, H, W = x_mod.shape
 
-    #steps = np.geomspace(start=5, stop=0.1, num=len(sigmas))
+    steps = np.geomspace(start=5, stop=1, num=len(sigmas))
 
     with torch.no_grad():
         #outer loop over noise scales
@@ -95,8 +95,8 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
             labels = torch.ones(x_mod.shape[0], device=x_mod.device) * c 
             labels = labels.long()
 
-            step_size = step_lr * (sigma / sigmas[-1]) ** 2
-            #step_size = steps[c]
+            #step_size = step_lr * (sigma / sigmas[-1]) ** 2
+            step_size = steps[c]
 
             #Inner loop over T
             for s in range(n_steps_each):
@@ -110,10 +110,11 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
                 #A should be [N, m, C * H * W], x should be [N, C, H, W], y should be [N, m, 1]
                 if mode=='denoising':
                     Axt = x_mod 
-                    mle_grad = (Axt - y) / N #for denoising, y has same dimension as x
+                    mle_grad = (Axt - y) * (1 / N) #for denoising, y has same dimension as x
                 else:
                     Axt = torch.matmul(A, x_mod.view(N, -1, 1))
-                    mle_grad = torch.matmul(torch.transpose(A, -2, -1), Axt - y).view(N, C, H, W) / N
+                    mle_grad = torch.matmul(torch.transpose(A, -2, -1), Axt - y).view(N, C, H, W) * (1 / N) #MSE gradient
+                    #mle_grad = torch.matmul(torch.transpose(A, -2, -1), torch.sign(Axt - y)).view(N, C, H, W) * (1 / N) #L1 error gradient
 
                 likelihood_norm = torch.norm(mle_grad.view(mle_grad.shape[0], -1), dim=-1).mean()
                 #likelihood_mean_norm = torch.norm(mle_grad.mean(dim=0).view(-1)) ** 2
