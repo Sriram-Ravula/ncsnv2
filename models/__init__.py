@@ -206,7 +206,7 @@ def inverse_solver(x_mod, y, A, scorenet, sigmas, lr = [5, 1], c2=1, auto_c2=Tru
     with torch.no_grad():
         for c, sigma in enumerate(sigmas):
             if sigma_type == 'subsample':
-                labels = torch.ones(x_mod.shape[0], device=x_mod.device) * (1100 // decimate_sigma) * c
+                labels = torch.ones(x_mod.shape[0], device=x_mod.device) * decimate_sigma * c
             elif sigma_type == 'last':
                 labels = torch.ones(x_mod.shape[0], device=x_mod.device) * 1099 
             labels = labels.long()
@@ -247,7 +247,7 @@ def inverse_solver(x_mod, y, A, scorenet, sigmas, lr = [5, 1], c2=1, auto_c2=Tru
                 mse_true = mse(true_x, x_mod)
 
             if not final_only:
-                images.append(x_mod.to('cpu'))
+                images.append(x_mod.cpu())
             if verbose:
                 print("\n iteration: {}, sigma: {:.4f}, step_size: {:.4f}, prior_norm: {:.4f}, likelihood_norm: {:.4f}, grad_norm: {:.4f} \
                         image_norm: {:.4f}, train_mse: {:.4f}".format( \
