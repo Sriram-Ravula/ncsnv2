@@ -85,7 +85,6 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
     mse = torch.nn.MSELoss()
 
     N, C, H, W = x_mod.shape
-    m = A.shape[-2]
 
     steps = np.geomspace(start=5, stop=1, num=len(sigmas))
 
@@ -167,6 +166,96 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
             last_noise = last_noise.long()
             x_mod = x_mod + sigmas[-1] ** 2 * scorenet(x_mod, last_noise)
             images.append(x_mod.to('cpu'))
+
+        if final_only:
+            return [x_mod.to('cpu')]
+        else:
+            return images
+
+@torch.no_grad()
+def inverse_solver(x_mod, y, A, scorenet, sigmas, lr = [5, 1], c2=1, auto_c2=True,
+                   final_only=False, verbose=False, likelihood_every=1,
+                   decimate_sigma=None, mode=None, true_x=None, sigma_type = 'subsample'):
+    images = []
+
+    #if desired, decimate the number of noise scales to speed up inference
+    if decimate_sigma is not None:
+        if sigma_type == 'subsample': #grab equally-spaced sigma values
+            sigmas_temp = sigmas[0:-1:decimate_sigma].tolist() 
+            sigmas_temp.append(sigmas[-1]) 
+
+        elif sigma_type == 'last': #grab just the last sigma value multiple times
+            num_sigmas = sigmas.shape[0] // decimate_sigma
+            sigmas_temp = []
+            for i in range(num_sigmas):
+                sigmas_temp.append(sigmas[-1])
+
+        else:
+            sigmas_temp = sigmas
+
+        sigmas = sigmas_temp 
+
+    mse = torch.nn.MSELoss()
+
+    N, C, H, W = x_mod.shape
+
+    steps = np.geomspace(start=lr[0], stop=lr[1], num=len(sigmas))
+
+    likelihood_norm = 0
+
+    with torch.no_grad():
+        for c, sigma in enumerate(sigmas):
+            if sigma_type == 'subsample':
+                labels = torch.ones(x_mod.shape[0], device=x_mod.device) * (1100 // decimate_sigma) * c
+            elif sigma_type == 'last':
+                labels = torch.ones(x_mod.shape[0], device=x_mod.device) * 1099 
+            labels = labels.long()
+
+            step_size = steps[c]
+
+            #s(x_t) ~= \grad_x log p(x) -- THE PRIOR
+            grad = scorenet(x_mod, labels)
+
+            prior_norm = torch.norm(grad.view(grad.shape[0], -1), dim=-1).mean()
+
+            if c % likelihood_every == 0:
+                #\grad_x log p(y | x) -- LIKELIHOOD
+                if mode=='denoising':
+                    Axt = x_mod
+                    mle_grad = (Axt - y) * c2 
+                else:
+                    Axt = torch.matmul(A, x_mod.view(N, -1, 1)) 
+                    mle_grad = torch.matmul(torch.transpose(A, -2, -1), Axt - y).view(N, C, H, W) * c2 
+
+                likelihood_norm = torch.norm(mle_grad.view(mle_grad.shape[0], -1), dim=-1).mean()
+
+                if auto_c2 and c == 0:
+                    c2 = prior_norm.item() / likelihood_norm.item()
+                    mle_grad = mle_grad * c2 #MSE gradient
+                    likelihood_norm = torch.norm(mle_grad.view(mle_grad.shape[0], -1), dim=-1).mean()
+
+                grad = grad - mle_grad
+
+            grad_norm = torch.norm(grad.view(grad.shape[0], -1), dim=-1).mean()
+
+            x_mod = x_mod + step_size * grad
+
+            #calc l2 norm of iterate variable for logging
+            image_norm = torch.norm(x_mod.view(x_mod.shape[0], -1), dim=-1).mean()
+            mse_iter = mse(Axt, y)
+            if true_x is not None:
+                mse_true = mse(true_x, x_mod)
+
+            if not final_only:
+                images.append(x_mod.to('cpu'))
+            if verbose:
+                print("\n iteration: {}, sigma: {:.4f}, step_size: {:.4f}, prior_norm: {:.4f}, likelihood_norm: {:.4f}, grad_norm: {:.4f} \
+                        image_norm: {:.4f}, train_mse: {:.4f}".format( \
+                    c, sigma, step_size, prior_norm.item(), likelihood_norm.item(), grad_norm.item(), image_norm.item(), \
+                    mse_iter.item()))
+                
+                if true_x is not None:
+                    print("true_mse: {:.4f}".format(mse_true.item()))
 
         if final_only:
             return [x_mod.to('cpu')]
