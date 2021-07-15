@@ -173,9 +173,9 @@ def langevin_Inverse(x_mod, y, A, scorenet, sigmas, n_steps_each=200, step_lr=0.
             return images
 
 @torch.no_grad()
-def inverse_solver(x_mod, y, A, scorenet, sigmas, lr = [5, 1], c2=1, auto_c2=True,
+def inverse_solver(x_mod, y, A, scorenet, sigmas, lr = [5, 1], c1=1, c2=1, auto_c2=True,
                    final_only=False, verbose=False, likelihood_every=1,
-                   decimate_sigma=None, mode=None, true_x=None, sigma_type = 'subsample'):
+                   decimate_sigma=None, mode=None, true_x=None, sigma_type = 'subsample', likelihood_type="l2"):
     images = []
 
     #if desired, decimate the number of noise scales to speed up inference
@@ -214,7 +214,7 @@ def inverse_solver(x_mod, y, A, scorenet, sigmas, lr = [5, 1], c2=1, auto_c2=Tru
             step_size = steps[c]
 
             #s(x_t) ~= \grad_x log p(x) -- THE PRIOR
-            grad = scorenet(x_mod, labels)
+            grad = scorenet(x_mod, labels) * c1
 
             prior_norm = torch.norm(grad.view(grad.shape[0], -1), dim=-1).mean()
 
@@ -222,10 +222,16 @@ def inverse_solver(x_mod, y, A, scorenet, sigmas, lr = [5, 1], c2=1, auto_c2=Tru
                 #\grad_x log p(y | x) -- LIKELIHOOD
                 if mode=='denoising':
                     Axt = x_mod
-                    mle_grad = (Axt - y) * c2 
+                    if likelihood_type == "l2":
+                        mle_grad = (Axt - y) * c2 
+                    elif likelihood_type == "l1":
+                        mle_grad = torch.sign(Axt - y) * c2 
                 else:
                     Axt = torch.matmul(A, x_mod.view(N, -1, 1)) 
-                    mle_grad = torch.matmul(torch.transpose(A, -2, -1), Axt - y).view(N, C, H, W) * c2 
+                    if likelihood_type == "l2":
+                        mle_grad = torch.matmul(torch.transpose(A, -2, -1), Axt - y).view(N, C, H, W) * c2 
+                    elif likelihood_type == "l1":
+                        mle_grad = torch.matmul(torch.transpose(A, -2, -1), torch.sign(Axt - y)).view(N, C, H, W) * c2 
 
                 likelihood_norm = torch.norm(mle_grad.view(mle_grad.shape[0], -1), dim=-1).mean()
 
