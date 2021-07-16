@@ -204,12 +204,16 @@ def inverse_solver(x_mod, y, A, scorenet, sigmas, lr = [5, 1], c1=1, c2=1, auto_
     likelihood_norm = 0
 
     with torch.no_grad():
+        if sigma_type == 'last':
+            labels = torch.ones(x_mod.shape[0], device=x_mod.device) * 1099 
+            labels = labels.long()
         for c, sigma in enumerate(sigmas):
             if sigma_type == 'subsample':
                 labels = torch.ones(x_mod.shape[0], device=x_mod.device) * decimate_sigma * c
-            elif sigma_type == 'last':
-                labels = torch.ones(x_mod.shape[0], device=x_mod.device) * 1099 
-            labels = labels.long()
+                labels = labels.long()
+            elif sigma_type != 'last':
+                labels = torch.ones(x_mod.shape[0], device=x_mod.device) * c
+                labels = labels.long()
 
             step_size = steps[c]
 
@@ -245,6 +249,7 @@ def inverse_solver(x_mod, y, A, scorenet, sigmas, lr = [5, 1], c1=1, c2=1, auto_
             grad_norm = torch.norm(grad.view(grad.shape[0], -1), dim=-1).mean()
 
             x_mod = x_mod + step_size * grad
+            #x_mod = torch.clamp(x_mod, 0.0, 1.0)
 
             #calc l2 norm of iterate variable for logging
             image_norm = torch.norm(x_mod.view(x_mod.shape[0], -1), dim=-1).mean()
