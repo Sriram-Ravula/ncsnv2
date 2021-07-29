@@ -1,0 +1,69 @@
+training:
+  batch_size: 8
+  n_epochs: 500000  #number of training epochs - superceded by n_iters 
+  n_iters: 80001  #maximum number of training iterations - stops before n_epochs if needed
+  snapshot_freq: 5000 #frequency with which to save weights and sample from output
+  snapshot_sampling: true 
+  anneal_power: 2 
+  log_all_sigmas: false
+
+sampling:
+  batch_size: 36  #number of samples to produce for sampling
+  data_init: false
+  step_lr: 0.0000016  #epsilon - step size for sampling during Langevin Dynamics
+  n_steps_each: 3 #T - number of inner loop steps
+  ckpt_id: 80000  
+  final_only: true
+  fid: false
+  denoise: true #whether to add \sigma^2 * s_theta(x_T, \sigma_T) to the final output
+  num_samples4fid: 10000
+  inpainting: false
+  interpolation: false
+  n_interpolations: 8
+
+#unused
+fast_fid:
+  batch_size: 1000
+  num_samples: 1000
+  step_lr: 0.0000009
+  n_steps_each: 3
+  begin_ckpt: 100000
+  end_ckpt: 80000
+  verbose: false
+  ensemble: false
+
+test:
+  begin_ckpt: 5000
+  end_ckpt: 80000
+  batch_size: 100
+
+data:
+  dataset: "VELOCITY_DIFFERENCE"
+  image_size: 256
+  channels: 1
+  logit_transform: false
+  uniform_dequantization: false
+  gaussian_dequantization: false
+  random_flip: true
+  rescaled: false
+  num_workers: 8
+
+model:
+  sigma_begin: 7 #\sigma_1 - the first noise scale
+  num_classes: 800 #L - the number of noise levels to consider
+  ema: true #use an exponential moving avergae?
+  ema_rate: 0.999 #m, for parameters: \theta^' = m*\theta^' + (1 - m)\theta_i
+  spec_norm: false
+  sigma_dist: geometric #the progression of the sigma values - Q: do we have to worry about the \gamma ratio or is it automatically set for us?
+  sigma_end: 0.01 #\sigma_L - the last noise scale
+  normalization: InstanceNorm++
+  nonlinearity: elu
+  ngf: 128
+
+optim:
+  weight_decay: 0.000
+  optimizer: "Adam"
+  lr: 0.0001
+  beta1: 0.9
+  amsgrad: false
+  eps: 0.00000001
