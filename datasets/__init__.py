@@ -140,6 +140,25 @@ def get_dataset(args, config):
         test_dataset = Subset(dataset, test_indices)
         dataset = Subset(dataset, train_indices)
 
+    elif config.data.dataset == 'VELOCITY_RTM':
+        tran_transform = transforms.Compose([
+            transforms.Resize(size = [config.data.image_size, config.data.image_size], \
+                interpolation=transforms.InterpolationMode.BICUBIC, antialias=True),
+            transforms.RandomHorizontalFlip(p=0.5)
+        ])
+
+        dataset = Velocity(path=os.path.join(args.exp, 'datasets', '8009_rtm_images.npy'), transform=tran_transform)
+
+        num_items = len(dataset)
+        indices = list(range(num_items))
+        random_state = np.random.get_state()
+        np.random.seed(2240)
+        np.random.shuffle(indices)
+        np.random.set_state(random_state)
+        train_indices, test_indices = indices[:int(num_items * 0.9)], indices[int(num_items * 0.9):]
+        test_dataset = Subset(dataset, test_indices)
+        dataset = Subset(dataset, train_indices)
+
     return dataset, test_dataset
 
 def logit_transform(image, lam=1e-6):

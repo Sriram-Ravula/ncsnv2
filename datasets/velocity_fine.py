@@ -10,7 +10,7 @@ class Velocity(TensorDataset):
         maxi = np.max(self.tensors)
         self.tensors = (self.tensors - mini) / (maxi - mini)
 
-        self.tensors = torch.from_numpy(self.tensors).unsqueeze(1)
+        self.tensors = torch.from_numpy(self.tensors).unsqueeze(1).float()
 
         self.transform = transform
 
