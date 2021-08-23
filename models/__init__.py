@@ -10,6 +10,12 @@ def get_sigmas(config):
         sigmas = torch.tensor(
             np.linspace(config.model.sigma_begin, config.model.sigma_end, config.model.num_classes)
         ).float().to(config.device)
+    
+    #ADDITION FOR RTM_N IMAGES
+    #GRAB THE LIST lambda[n_shots_i] 
+    elif config.model.sigma_dist == 'rtm':
+        lambda_temp = np.asarray(config.model.lambdas_list)
+        sigmas = torch.tensor(lambda_temp).float().to(config.device)
 
     else:
         raise NotImplementedError('sigma distribution not supported')

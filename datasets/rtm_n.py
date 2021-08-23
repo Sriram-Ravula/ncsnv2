@@ -29,14 +29,14 @@ class RTM_N(TensorDataset):
         #grb all the valid sids and set image dimensions
         for dI in os.listdir(path):
 
-            slice_path = os.path.join(path,dI)
+            slice_path = os.path.join(path, dI)
 
             if os.path.isdir(slice_path):
 
                 img_path = os.path.join(slice_path, 'image.npy')
                 shots_path = os.path.join(slice_path, 'shots')
 
-                if os.path.isdir(img_path) and os.path.isdir(shots_path):
+                if os.path.isfile(img_path) and os.path.isdir(shots_path):
 
                     self.slices.append(dI)
 
@@ -56,8 +56,6 @@ class RTM_N(TensorDataset):
 
         if self.transform:
             sample = self.transform(sample)
-
-        target = 0 #dummy target
 
         return sample, index
 
@@ -85,4 +83,22 @@ class RTM_N(TensorDataset):
         return image_dataset
     
     def grab_rtm_image(image_index, n_shots):
-        
+    """
+    Given an image index and number of shots, gather and preprocess an RTM_n image
+    """
+        idxs = np.random.choice(243, size=n_shots, replace=False) #random indices of n_shots to grab
+
+        exp = load_exp(os.path.join(self.path, self.slices[image_index])) #dictionary of slice information
+
+        shot_paths = [s for s in exp['shots'] if int(os.path.basename(s).split("-")[1][:-4]) in idxs] #individual shots
+
+        image_k = np.zeros((exp['vel'].shape)) #holds the final processed image
+
+        #filter and sum each shot image
+        for spth in shot_paths:
+            image_k = image_k + laplaceFilter(load_npy(spth[0])[20:-20, 20:-20])
+
+        new_x = filterImage(image_k, exp['vel'], 0.95, 0.03, N=n_shots, rescale=True, laplace=False).T
+
+
+        return new_x
