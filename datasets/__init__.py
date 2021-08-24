@@ -4,7 +4,7 @@ import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10, LSUN
 from datasets.celeba import CelebA
 from datasets.ffhq import FFHQ
-from datasets.velocity_fine import Velocity
+from datasets.velocity_fine import Velocity, RTM_N
 from torch.utils.data import Subset
 import numpy as np
 
@@ -148,6 +148,24 @@ def get_dataset(args, config):
         ])
 
         dataset = Velocity(path=os.path.join(args.exp, 'datasets', '8009_rtm_images.npy'), transform=tran_transform)
+
+        num_items = len(dataset)
+        indices = list(range(num_items))
+        random_state = np.random.get_state()
+        np.random.seed(2240)
+        np.random.shuffle(indices)
+        np.random.set_state(random_state)
+        train_indices, test_indices = indices[:int(num_items * 0.9)], indices[int(num_items * 0.9):]
+        test_dataset = Subset(dataset, test_indices)
+        dataset = Subset(dataset, train_indices)
+    
+    elif config.data.dataset == 'RTM_N':
+        tran_transform = transforms.Compose([
+            transforms.Resize(size = [config.data.image_size, config.data.image_size], \
+                interpolation=transforms.InterpolationMode.BICUBIC),
+        ])
+
+        dataset = RTM_N(path="/scratch/08269/rstone/full_rtm_8048", transform=tran_transform)
 
         num_items = len(dataset)
         indices = list(range(num_items))

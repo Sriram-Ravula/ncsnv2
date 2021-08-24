@@ -25,7 +25,7 @@ __all__ = ['NCSNRunner']
 def get_model(config):
     if config.data.dataset == 'CIFAR10' or config.data.dataset == 'CELEBA':
         return NCSNv2(config).to(config.device)
-    elif config.data.dataset == "FFHQ" or config.data.dataset == 'VELOCITY_FINE' or config.data.dataset == 'VELOCITY_DIFFERENCE' or config.data.dataset == 'VELOCITY_RTM':
+    elif config.data.dataset == "FFHQ" or config.data.dataset == 'VELOCITY_FINE' or config.data.dataset == 'VELOCITY_DIFFERENCE' or config.data.dataset == 'VELOCITY_RTM' or config.data.dataset == 'RTM_N':
         return NCSNv2Deepest(config).to(config.device)
     elif config.data.dataset == 'LSUN':
         return NCSNv2Deeper(config).to(config.device)

@@ -40,9 +40,9 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, labels=None, 
     lambda_n = lambdas_list[labels].view(samples[0].shape[0], *([1] * len(samples[0].shape[1:])))
 
     #(4) grab the n_shots images corresponding to the rtm243 images we have as training samples
-    #we pass the RTM image index and the n_shots_i to the function and get back the RTM_{n_shots_i} image
+    #we pass the RTM_243 image with its index and the n_shots_i to the function and get back the RTM_{n_shots_i} image
     #preturbed_samples = [N, C, H, W]
-    perturbed_samples = grab_rtm_image(samples[1], used_nshots) #x_{n_shots_i}
+    perturbed_samples = grab_rtm_image(samples, used_nshots) #x_{n_shots_i}
 
     #(5) form the targets 
     #targets = [N, C, H, W]

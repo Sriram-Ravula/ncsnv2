@@ -82,23 +82,29 @@ class RTM_N(TensorDataset):
         
         return image_dataset
     
-    def grab_rtm_image(image_index, n_shots):
+    def grab_rtm_image(input_sample, n_shots):
     """
     Given an image index and number of shots, gather and preprocess an RTM_n image
     """
-        idxs = np.random.choice(243, size=n_shots, replace=False) #random indices of n_shots to grab
+        image_orig, image_index = input_sample #the RTM_243 image and its index
 
-        exp = load_exp(os.path.join(self.path, self.slices[image_index])) #dictionary of slice information
+        rtm_n_img = torch.zeros_like(image_orig) #holds the images to be returned
 
-        shot_paths = [s for s in exp['shots'] if int(os.path.basename(s).split("-")[1][:-4]) in idxs] #individual shots
+        for i, n in enumerate(n_shots.tolist()):
+            idxs = np.random.choice(243, size=n, replace=False) #random indices of n_shots to grab
 
-        image_k = np.zeros((exp['vel'].shape)) #holds the final processed image
+            exp = load_exp(os.path.join(self.path, self.slices[image_index])) #dictionary of slice information
 
-        #filter and sum each shot image
-        for spth in shot_paths:
-            image_k = image_k + laplaceFilter(load_npy(spth[0])[20:-20, 20:-20])
+            shot_paths = [s for s in exp['shots'] if int(os.path.basename(s).split("-")[1][:-4]) in idxs] #individual shots
 
-        new_x = filterImage(image_k, exp['vel'], 0.95, 0.03, N=n_shots, rescale=True, laplace=False).T
+            image_k = np.zeros((exp['vel'].shape)) #holds the final processed image
 
+            #filter and sum each shot image
+            for spth in shot_paths:
+                image_k = image_k + laplaceFilter(load_npy(spth[0])[20:-20, 20:-20])
 
-        return new_x
+            new_x = filterImage(image_k, exp['vel'], 0.95, 0.03, N=n, rescale=True, laplace=False).T
+        
+            rtm_n_img[i] = torch.from_numpy(new_x, dtype=image_orig.dtype, device=image_orig.device).unsqueeze(0)
+
+        return rtm_n_img
