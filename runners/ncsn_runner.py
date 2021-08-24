@@ -81,9 +81,9 @@ class NCSNRunner():
         #for RTM_N this is the lambdas
         sigmas = get_sigmas(self.config)
 
-        if config.data.dataset == 'RTM_N':
-            n_shots = np.asarray(config.model.n_shots).squeeze()
-            n_shots = torch.from_numpy(n_shots).float().to(config.device)
+        if self.config.data.dataset == 'RTM_N':
+            n_shots = np.asarray(self.config.model.n_shots).squeeze()
+            n_shots = torch.from_numpy(n_shots).float().to(self.config.device)
 
         if self.config.training.log_all_sigmas:
             ### Commented out training time logging to save time.
@@ -131,7 +131,7 @@ class NCSNRunner():
                 X = X.to(self.config.device)
                 X = data_transform(self.config, X)
 
-                if config.data.dataset == 'RTM_N':
+                if self.config.data.dataset == 'RTM_N':
                     loss = rtm_score_estimation(score, (X, y), n_shots, sigmas, dataset, None, hook)
                 else:
                     loss = anneal_dsm_score_estimation(score, X, sigmas, None,
@@ -207,7 +207,7 @@ class NCSNRunner():
                         ## Random state will be affected because of sampling during training time.
 
                         #For RTM_n sampling, we want to start from an rtm_T image where T is the smallest number of shots
-                        if config.data.dataset == 'RTM_N':
+                        if self.config.data.dataset == 'RTM_N':
                             #(1) pick a random 36 test samples from the test set to initialise
                             num_test_samples = len(test_dataset)
                             random_idxs = np.random.choice(num_test_samples, size=36, replace=False)
@@ -222,7 +222,7 @@ class NCSNRunner():
                                 X = X.to(self.config.device)
                                 X = data_transform(self.config, X)
 
-                                next_init_sample = test_dataset.grab_rtm_image((X, y), n_shots[-1])
+                                next_init_sample = test_dataset.dataset.grab_rtm_image((X, y), n_shots[-1])
 
                                 init_samples[i] = next_init_sample
                             

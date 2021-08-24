@@ -1,4 +1,5 @@
 import torch
+from datasets.rtm_n import RTM_N
 
 def anneal_dsm_score_estimation(scorenet, samples, sigmas, labels=None, anneal_power=2., hook=None):
     if labels is None:
@@ -29,7 +30,10 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, 
     #(1) if we aren't given an index i for n_shots, pick a random one
     #labels has size [N] - same as samples[0]
     if labels is None: 
-        labels = torch.randint(0, len(n_shots), (samples[0].shape[0],), device=samples.device)
+        labels = torch.randint(0, len(n_shots), (samples[0].shape[0],), device=samples[0].device)
+    
+    n_shots = torch.tensor(n_shots)
+    lambdas_list = torch.tensor(lambdas_list)
 
     #(2) grab the n_shots_i (e.g. 180 shots)
     #used_nshots has size [N]
@@ -42,7 +46,7 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, 
     #(4) grab the n_shots images corresponding to the rtm243 images we have as training samples
     #we pass the RTM_243 image with its index and the n_shots_i to the function and get back the RTM_{n_shots_i} image
     #preturbed_samples = [N, C, H, W]
-    perturbed_samples = rtm_dataset.grab_rtm_image(samples, used_nshots) #x_{n_shots_i}
+    perturbed_samples = rtm_dataset.dataset.grab_rtm_image(samples, used_nshots) #x_{n_shots_i}
 
     #(5) form the targets 
     #targets = [N, C, H, W]

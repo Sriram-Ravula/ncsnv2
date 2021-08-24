@@ -6,15 +6,15 @@ import os
 
 from rtm_utils import load_exp, load_npy, filterImage, laplaceFilter
 
-"""
-A dataset class for RTM_n images.
-Looks at a folder of RTM images and:
-    - enumerates the list of their indices
-    - it preprocesses returns the RTM_243 images (already hardcoded and saved) 
-    - 
-    - preprocesses the images to stitch together "n-shots" when loaded at train time
-"""
 class RTM_N(TensorDataset):
+    """
+    A dataset class for RTM_n images.
+    Looks at a folder of RTM images and:
+        - enumerates the list of their indices
+        - it preprocesses returns the RTM_243 images (already hardcoded and saved) 
+        - 
+        - preprocesses the images to stitch together "n-shots" when loaded at train time
+    """
     def __init__(self, path, transform=None, debug=True):
         self.debug = debug
         self.path = path
@@ -33,14 +33,19 @@ class RTM_N(TensorDataset):
 
                 img_path = os.path.join(slice_path, 'image.npy')
                 shots_path = os.path.join(slice_path, 'shots')
+                config_path = os.path.join(slice_path, 'config.yaml')
+                velocity_path = os.path.join(slice_path, 'slice.npy')
 
-                if os.path.isfile(img_path) and os.path.isdir(shots_path):
+                if os.path.isfile(img_path) and os.path.isdir(shots_path) and os.path.isfile(config_path) and os.path.isfile(velocity_path):
 
                     self.slices.append(dI)
 
                     if self.H == 0:
 
-                        self.H, self.W = load_exp(img_path)['vel'].shape
+                        self.W, self.H = load_exp(slice_path)['vel'].shape #shape is transposed of how it should be viewed
+
+        #TODO: Remove this debugging line
+        self.slices = self.slices[0:10]
 
         #[N, 1, H, W] set of filtered and pre-processed RTM243 images in [0, 1]
         #same order as self.slices - use this fact to index and match n_shots
@@ -57,10 +62,10 @@ class RTM_N(TensorDataset):
 
         return sample, index
 
-    def __build_dataset__():
-    """
-    Gathers, compiles, pre-processes, and returns the RTM_243 images
-    """
+    def __build_dataset__(self):
+        """
+        Gathers, compiles, pre-processes, and returns the RTM_243 images
+        """
         if self.debug:
             print("Starting to build dataset........")
         
@@ -80,21 +85,24 @@ class RTM_N(TensorDataset):
         
         return image_dataset
     
-    def grab_rtm_image(input_sample, n_shots):
-    """
-    Given an image index and number of shots per image, gather and preprocess an RTM_n image.
-    Args:
-        input_sample: (X, y) pair of rtm_243 image and its index. (tensor:[N, 1, H, W], list:[N])
-        n_shots: the number of shots we want to select for each rtm_n image corresponding to the input. list:[N]
-    Returns:
-        rtm_n_img: a tensor with same dimensions as X comprising rtm_n images. tensor:[N, 1, H, W]
-    """
+    def grab_rtm_image(self, input_sample, n_shots):
+        """
+        Given an image index and number of shots per image, gather and preprocess an RTM_n image.
+        Args:
+            input_sample: (X, y) pair of rtm_243 image and its index. (tensor:[N, 1, H, W], list:[N])
+            n_shots: the number of shots we want to select for each rtm_n image corresponding to the input. list:[N]
+        Returns:
+            rtm_n_img: a tensor with same dimensions as X comprising rtm_n images. tensor:[N, 1, H, W]
+        """
         image_orig, image_index = input_sample #the RTM_243 image and its index
 
         rtm_n_img = torch.zeros_like(image_orig) #holds the images to be returned
 
-        for i, n in enumerate(n_shots):
-            idxs = np.random.choice(243, size=n, replace=False) #random indices of n_shots to grab
+        for i, n in enumerate(n_shots.squeeze().tolist()):
+            idxs = np.random.choice(243, size=int(n), replace=False) #random indices of n_shots to grab
+
+            #TODO Delete this line
+            print(os.path.join(self.path, self.slices[image_index[i]]))
 
             exp = load_exp(os.path.join(self.path, self.slices[image_index[i]])) #dictionary of slice information
 
