@@ -29,7 +29,7 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, labels=None, 
     #(1) if we aren't given an index i for n_shots, pick a random one
     #labels has size [N] - same as samples[0]
     if labels is None: 
-        labels = torch.randint(0, len(sigmas), (samples[0].shape[0],), device=samples.device)
+        labels = torch.randint(0, len(n_shots), (samples[0].shape[0],), device=samples.device)
 
     #(2) grab the n_shots_i (e.g. 180 shots)
     #used_nshots has size [N]

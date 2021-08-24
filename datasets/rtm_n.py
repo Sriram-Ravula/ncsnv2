@@ -90,10 +90,10 @@ class RTM_N(TensorDataset):
 
         rtm_n_img = torch.zeros_like(image_orig) #holds the images to be returned
 
-        for i, n in enumerate(n_shots.tolist()):
+        for i, n in enumerate(n_shots):
             idxs = np.random.choice(243, size=n, replace=False) #random indices of n_shots to grab
 
-            exp = load_exp(os.path.join(self.path, self.slices[image_index])) #dictionary of slice information
+            exp = load_exp(os.path.join(self.path, self.slices[image_index[i]])) #dictionary of slice information
 
             shot_paths = [s for s in exp['shots'] if int(os.path.basename(s).split("-")[1][:-4]) in idxs] #individual shots
 

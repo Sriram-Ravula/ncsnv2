@@ -1,7 +1,7 @@
 import numpy as np
 import glob
 import tqdm
-from losses.dsm import anneal_dsm_score_estimation
+from losses.dsm import anneal_dsm_score_estimation, rtm_score_estimation
 
 import torch.nn.functional as F
 import logging
@@ -78,7 +78,12 @@ class NCSNRunner():
                 ema_helper.load_state_dict(states[4])
 
         #grab all L noise levels
+        #for RTM_N this is the lambdas
         sigmas = get_sigmas(self.config)
+
+        if config.data.dataset == 'RTM_N':
+            n_shots = np.asarray(config.model.n_shots).squeeze()
+            n_shots = torch.from_numpy(n_shots).float().to(config.device)
 
         if self.config.training.log_all_sigmas:
             ### Commented out training time logging to save time.
@@ -126,9 +131,12 @@ class NCSNRunner():
                 X = X.to(self.config.device)
                 X = data_transform(self.config, X)
 
-                loss = anneal_dsm_score_estimation(score, X, sigmas, None,
-                                                   self.config.training.anneal_power,
-                                                   hook)
+                if config.data.dataset == 'RTM_N':
+                    loss = rtm_score_estimation(score, (X, y), n_shots, sigmas, None, hook)
+                else:
+                    loss = anneal_dsm_score_estimation(score, X, sigmas, None,
+                                                    self.config.training.anneal_power,
+                                                    hook)
                 tb_logger.add_scalar('loss', loss, global_step=step)
                 tb_hook()
 
@@ -186,6 +194,7 @@ class NCSNRunner():
                     torch.save(states, os.path.join(self.args.log_path, 'checkpoint_{}.pth'.format(step)))
                     torch.save(states, os.path.join(self.args.log_path, 'checkpoint.pth'))
 
+                    #Checkpoint sampling!
                     if self.config.training.snapshot_sampling:
                         if self.config.model.ema:
                             test_score = ema_helper.ema_copy(score)
@@ -196,16 +205,47 @@ class NCSNRunner():
 
                         ## Different part from NeurIPS 2019.
                         ## Random state will be affected because of sampling during training time.
-                        init_samples = torch.rand(36, self.config.data.channels,
-                                                  self.config.data.image_size, self.config.data.image_size,
-                                                  device=self.config.device)
-                        init_samples = data_transform(self.config, init_samples)
 
-                        all_samples = anneal_Langevin_dynamics(init_samples, test_score, sigmas.cpu().numpy(),
-                                                               self.config.sampling.n_steps_each,
-                                                               self.config.sampling.step_lr,
-                                                               final_only=True, verbose=True,
-                                                               denoise=self.config.sampling.denoise)
+                        #For RTM_n sampling, we want to start from an rtm_T image where T is the smallest number of shots
+                        if config.data.dataset == 'RTM_N':
+                            #(1) pick a random 36 test samples from the test set to initialise
+                            num_test_samples = len(test_dataset)
+                            random_idxs = np.random.choice(num_test_samples, size=36, replace=False)
+
+                            init_samples = torch.zeros(36, self.config.data.channels, self.config.data.image_size, 
+                                                            self.config.data.image_size, 
+                                                            device=self.config.device)
+
+                            #(2) grab the random 36 samples from the test set
+                            for i in range(36):
+                                X, y = test_dataset[random_idxs[i]]
+                                X = X.to(self.config.device)
+                                X = data_transform(self.config, X)
+
+                                next_init_sample = test_dataset.grab_rtm_image((X, y), n_shots[-1])
+
+                                init_samples[i] = next_init_sample
+                            
+                            init_samples = data_transform(self.config, init_samples)
+
+                            all_samples = anneal_Langevin_dynamics_rtm_n(init_samples, test_score, sigmas.cpu().numpy(),
+                                                                n_shots,
+                                                                self.config.sampling.n_steps_each,
+                                                                self.config.sampling.step_lr,
+                                                                final_only=True, verbose=True,
+                                                                denoise=self.config.sampling.denoise)
+                        
+                        else:
+                            init_samples = torch.rand(36, self.config.data.channels,
+                                                    self.config.data.image_size, self.config.data.image_size,
+                                                    device=self.config.device)
+                            init_samples = data_transform(self.config, init_samples)
+
+                            all_samples = anneal_Langevin_dynamics(init_samples, test_score, sigmas.cpu().numpy(),
+                                                                self.config.sampling.n_steps_each,
+                                                                self.config.sampling.step_lr,
+                                                                final_only=True, verbose=True,
+                                                                denoise=self.config.sampling.denoise)
 
                         sample = all_samples[-1].view(all_samples[-1].shape[0], self.config.data.channels,
                                                       self.config.data.image_size,
