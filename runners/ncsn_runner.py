@@ -132,7 +132,7 @@ class NCSNRunner():
                 X = data_transform(self.config, X)
 
                 if config.data.dataset == 'RTM_N':
-                    loss = rtm_score_estimation(score, (X, y), n_shots, sigmas, None, hook)
+                    loss = rtm_score_estimation(score, (X, y), n_shots, sigmas, dataset, None, hook)
                 else:
                     loss = anneal_dsm_score_estimation(score, X, sigmas, None,
                                                     self.config.training.anneal_power,
@@ -227,13 +227,6 @@ class NCSNRunner():
                                 init_samples[i] = next_init_sample
                             
                             init_samples = data_transform(self.config, init_samples)
-
-                            all_samples = anneal_Langevin_dynamics_rtm_n(init_samples, test_score, sigmas.cpu().numpy(),
-                                                                n_shots,
-                                                                self.config.sampling.n_steps_each,
-                                                                self.config.sampling.step_lr,
-                                                                final_only=True, verbose=True,
-                                                                denoise=self.config.sampling.denoise)
                         
                         else:
                             init_samples = torch.rand(36, self.config.data.channels,
@@ -241,11 +234,11 @@ class NCSNRunner():
                                                     device=self.config.device)
                             init_samples = data_transform(self.config, init_samples)
 
-                            all_samples = anneal_Langevin_dynamics(init_samples, test_score, sigmas.cpu().numpy(),
-                                                                self.config.sampling.n_steps_each,
-                                                                self.config.sampling.step_lr,
-                                                                final_only=True, verbose=True,
-                                                                denoise=self.config.sampling.denoise)
+                        all_samples = anneal_Langevin_dynamics(init_samples, test_score, sigmas.cpu().numpy(),
+                                                            self.config.sampling.n_steps_each,
+                                                            self.config.sampling.step_lr,
+                                                            final_only=True, verbose=True,
+                                                            denoise=self.config.sampling.denoise)
 
                         sample = all_samples[-1].view(all_samples[-1].shape[0], self.config.data.channels,
                                                       self.config.data.image_size,

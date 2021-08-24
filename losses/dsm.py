@@ -25,7 +25,7 @@ Args:
     labels: the index of the n_shots we are using for each pixel - i.e. i in n_shots_i. [N].
     hook: a hook for experiment logging if you please
 """
-def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, labels=None, hook=None):
+def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, labels=None, hook=None):
     #(1) if we aren't given an index i for n_shots, pick a random one
     #labels has size [N] - same as samples[0]
     if labels is None: 
@@ -42,7 +42,7 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, labels=None, 
     #(4) grab the n_shots images corresponding to the rtm243 images we have as training samples
     #we pass the RTM_243 image with its index and the n_shots_i to the function and get back the RTM_{n_shots_i} image
     #preturbed_samples = [N, C, H, W]
-    perturbed_samples = grab_rtm_image(samples, used_nshots) #x_{n_shots_i}
+    perturbed_samples = rtm_dataset.grab_rtm_image(samples, used_nshots) #x_{n_shots_i}
 
     #(5) form the targets 
     #targets = [N, C, H, W]

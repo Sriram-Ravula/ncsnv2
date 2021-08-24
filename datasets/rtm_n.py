@@ -4,9 +4,7 @@ import torch
 import tqdm
 import os
 
-from seismic_migration.utils.tools import load_exp, load_npy, filterImage
-from seismic_migration.utils.custom_plots import longs_colormap
-from mpl_toolkits.axes_grid1 import make_axes_locatable
+from rtm_utils import load_exp, load_npy, filterImage, laplaceFilter
 
 """
 A dataset class for RTM_n images.
@@ -84,7 +82,12 @@ class RTM_N(TensorDataset):
     
     def grab_rtm_image(input_sample, n_shots):
     """
-    Given an image index and number of shots, gather and preprocess an RTM_n image
+    Given an image index and number of shots per image, gather and preprocess an RTM_n image.
+    Args:
+        input_sample: (X, y) pair of rtm_243 image and its index. (tensor:[N, 1, H, W], list:[N])
+        n_shots: the number of shots we want to select for each rtm_n image corresponding to the input. list:[N]
+    Returns:
+        rtm_n_img: a tensor with same dimensions as X comprising rtm_n images. tensor:[N, 1, H, W]
     """
         image_orig, image_index = input_sample #the RTM_243 image and its index
 

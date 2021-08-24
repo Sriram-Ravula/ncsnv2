@@ -1,0 +1,68 @@
+training:
+  batch_size: 32
+  n_epochs: 100  #number of training epochs - superceded by n_iters 
+  n_iters: 100  #maximum number of training iterations - stops before n_epochs if needed
+  snapshot_freq: 10 #frequency with which to save weights and sample from output
+  snapshot_sampling: true 
+  anneal_power: 2 
+  log_all_sigmas: false
+
+sampling:
+  batch_size: 36  #number of samples to produce for sampling
+  data_init: false
+  step_lr: 0.0000016  #epsilon - step size for sampling during Langevin Dynamics
+  n_steps_each: 10 #T - number of inner loop steps
+  ckpt_id: 80000  
+  final_only: true
+  fid: false
+  denoise: true #whether to add \sigma^2 * s_theta(x_T, \sigma_T) to the final output
+  num_samples4fid: 10000
+  inpainting: false
+  interpolation: false
+  n_interpolations: 8
+
+#unused
+fast_fid:
+  batch_size: 1000
+  num_samples: 1000
+  step_lr: 0.0000009
+  n_steps_each: 3
+  begin_ckpt: 100000
+  end_ckpt: 80000
+  verbose: false
+  ensemble: false
+
+test:
+  begin_ckpt: 10
+  end_ckpt: 100
+  batch_size: 100
+
+data:
+  dataset: "RTM_N"
+  image_size: 256
+  channels: 1
+  logit_transform: false
+  uniform_dequantization: false
+  gaussian_dequantization: false
+  random_flip: true
+  rescaled: false
+  num_workers: 8
+
+model:
+  ema: true #use an exponential moving avergae?
+  ema_rate: 0.999 #m, for parameters: \theta^' = m*\theta^' + (1 - m)\theta_i
+  spec_norm: false
+  sigma_dist: rtm #the progression of the sigma values
+  n_shots: [3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,24,28,32,36,40,50,60,70,80,90,100,120,140,160,180,200,240]
+  lambdas_list: [61.38, 57.92, 55.50, 53.66, 52.20, 51.00, 49.99, 49.11, 48.35, 47.67, 47.06, 46.51, 46.02, 45.56, 45.14, 44.75, 44.38, 44.04, 42.88, 41.94, 41.16, 40.50, 39.92, 38.76, 37.85, 37.12, 36.51, 35.99, 35.53, 34.77, 34.15, 33.63, 33.19, 32.80, 32.15]
+  normalization: InstanceNorm++
+  nonlinearity: elu
+  ngf: 128
+
+optim:
+  weight_decay: 0.000
+  optimizer: "Adam"
+  lr: 0.0001
+  beta1: 0.9
+  amsgrad: false
+  eps: 0.00000001
