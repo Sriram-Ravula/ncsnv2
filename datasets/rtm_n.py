@@ -106,13 +106,16 @@ class RTM_N(TensorDataset):
 
             exp = load_exp(os.path.join(self.path, self.slices[image_index[i]])) #dictionary of slice information
 
+            #TODO Delete this line
+            print(exp['shots'][0])
+
             shot_paths = [s for s in exp['shots'] if int(os.path.basename(s).split("-")[1][:-4]) in idxs] #individual shots
 
             image_k = np.zeros((exp['vel'].shape)) #holds the final processed image
 
             #filter and sum each shot image
             for spth in shot_paths:
-                image_k = image_k + laplaceFilter(load_npy(spth[0])[20:-20, 20:-20])
+                image_k = image_k + laplaceFilter(load_npy(spth)[20:-20, 20:-20])
 
             new_x = filterImage(image_k, exp['vel'], 0.95, 0.03, N=n, rescale=True, laplace=False).T
         
