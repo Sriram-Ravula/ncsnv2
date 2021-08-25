@@ -210,7 +210,7 @@ class NCSNRunner():
                         if self.config.data.dataset == 'RTM_N':
                             #(1) pick a random 36 test samples from the test set to initialise
                             num_test_samples = len(test_dataset)
-                            random_idxs = np.random.choice(num_test_samples, size=36, replace=False)
+                            random_idxs = np.random.choice(num_test_samples, size=36, replace=True)
 
                             init_samples = torch.zeros(36, self.config.data.channels, self.config.data.image_size, 
                                                             self.config.data.image_size, 
@@ -222,7 +222,7 @@ class NCSNRunner():
                                 X = X.to(self.config.device)
                                 X = data_transform(self.config, X)
 
-                                next_init_sample = test_dataset.dataset.grab_rtm_image((X, y), n_shots[-1])
+                                next_init_sample = test_dataset.dataset.grab_rtm_image((X, [y]), n_shots[-1].item()*torch.ones(1)) #dimension of ones is hacky fix
 
                                 init_samples[i] = next_init_sample
                             

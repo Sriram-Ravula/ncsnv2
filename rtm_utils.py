@@ -165,8 +165,6 @@ def load_exp(path, fldrs=['shots', 'traces']):
     return out_dict
     
 def load_npy(path):
-    #TODO remove this debug line
-    print(path)
     with open(path, 'rb') as f:
         t = np.load(f)
     return t

@@ -1,5 +1,5 @@
 training:
-  batch_size: 32
+  batch_size: 16
   n_epochs: 10  #number of training epochs - superceded by n_iters 
   n_iters: 10  #maximum number of training iterations - stops before n_epochs if needed
   snapshot_freq: 5 #frequency with which to save weights and sample from output

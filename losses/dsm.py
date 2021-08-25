@@ -50,7 +50,7 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, 
 
     #(5) form the targets 
     #targets = [N, C, H, W]
-    target = samples - perturbed_samples #(x_243 - x_{n_shots_i})
+    target = samples[0] - perturbed_samples #(x_243 - x_{n_shots_i})
     target = target.view(target.shape[0], -1)
 
     #(6) grab the network output

@@ -45,7 +45,7 @@ class RTM_N(TensorDataset):
                         self.W, self.H = load_exp(slice_path)['vel'].shape #shape is transposed of how it should be viewed
 
         #TODO: Remove this debugging line
-        self.slices = self.slices[0:10]
+        self.slices = self.slices[0:40]
 
         #[N, 1, H, W] set of filtered and pre-processed RTM243 images in [0, 1]
         #same order as self.slices - use this fact to index and match n_shots
@@ -98,16 +98,16 @@ class RTM_N(TensorDataset):
 
         rtm_n_img = torch.zeros_like(image_orig) #holds the images to be returned
 
-        for i, n in enumerate(n_shots.squeeze().tolist()):
+        #artifact caused by "n_shots.squeeze().tolist()" producing a float if n_shots has a single element
+        if torch.numel(n_shots) == 1:
+            n_shots_iter = [n_shots.item()]
+        else:
+            n_shots_iter = n_shots.squeeze().tolist()
+
+        for i, n in enumerate(n_shots_iter):
             idxs = np.random.choice(243, size=int(n), replace=False) #random indices of n_shots to grab
 
-            #TODO Delete this line
-            print(os.path.join(self.path, self.slices[image_index[i]]))
-
             exp = load_exp(os.path.join(self.path, self.slices[image_index[i]])) #dictionary of slice information
-
-            #TODO Delete this line
-            print(exp['shots'][0])
 
             shot_paths = [s for s in exp['shots'] if int(os.path.basename(s).split("-")[1][:-4]) in idxs] #individual shots
 
@@ -119,6 +119,6 @@ class RTM_N(TensorDataset):
 
             new_x = filterImage(image_k, exp['vel'], 0.95, 0.03, N=n, rescale=True, laplace=False).T
         
-            rtm_n_img[i] = torch.from_numpy(new_x, dtype=image_orig.dtype, device=image_orig.device).unsqueeze(0)
+            rtm_n_img[i] = self.transform(torch.from_numpy(new_x).unsqueeze(0).to(image_orig.device).type(image_orig.dtype))
 
         return rtm_n_img
