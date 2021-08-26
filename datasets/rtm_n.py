@@ -5,6 +5,7 @@ import tqdm
 import os
 
 from rtm_utils import load_exp, load_npy, filterImage, laplaceFilter
+from joblib import Parallel, delayed, parallel_backend
 
 class RTM_N(TensorDataset):
     """
@@ -66,19 +67,37 @@ class RTM_N(TensorDataset):
         """
         Gathers, compiles, pre-processes, and returns the RTM_243 images
         """
-        if self.debug:
-            print("Starting to build dataset........")
-        
-        image_dataset = torch.zeros(len(self.slices), 1, self.H, self.W)
-        
-        for idx, sid in tqdm.tqdm(enumerate(self.slices)):
-            rtm243_path = os.path.join(self.path, sid)
+        image_dataset = torch.zeros(len(self.slices), 1, self.H, self.W)  
+
+        def grab_and_process_imgs(i, s):
+            rtm243_path = os.path.join(self.path, s)
             exp = load_exp(rtm243_path) #dictionary with the current subslice contents
 
             #filter and pre-process the rtm243 image 
             rtm243_img = filterImage(exp['image'], exp['vel'], 0.95, 0.03, N=1, rescale=True,laplace=True).T
 
-            image_dataset[idx] = torch.from_numpy(rtm243_img).unsqueeze(0).float()
+            return torch.from_numpy(rtm243_img).unsqueeze(0).float()  
+        
+        def collect_rtm_imgs(i, img)
+            image_dataset[i] = img
+
+        if self.debug:
+            print("Starting to build dataset........")
+            #with parallel_backend('threading', n_jobs=2, ):
+
+            #"""
+                for idx, sid in tqdm.tqdm(enumerate(self.slices)):
+                    img = grab_and_process_imgs(idx, sid)
+                    collect_rtm_imgs(idx, img)
+            #"""
+        else:
+            #with parallel_backend('threading', n_jobs=2, ):
+
+            #"""
+            for idx, sid in enumerate(self.slices):
+                img = grab_and_process_imgs(idx, sid)
+                collect_rtm_imgs(idx, img)
+            #"""
 
         if self.debug:
             print("Finished building dataset!")
@@ -98,16 +117,16 @@ class RTM_N(TensorDataset):
 
         rtm_n_img = torch.zeros_like(image_orig) #holds the images to be returned
 
-        #artifact caused by "n_shots.squeeze().tolist()" producing a float if n_shots has a single element
-        if torch.numel(n_shots) == 1:
-            n_shots_iter = [n_shots.item()]
-        else:
-            n_shots_iter = n_shots.squeeze().tolist()
-
-        for i, n in enumerate(n_shots_iter):
+        def get_single_rtm_img(i, n, path, slices, img_idx, device, dtype):
+            """
+            Edits rtm_n_img[i] to hold an rtm_n image.
+            Args:
+                i: the index in the batch of the rtm_n image we are creating
+                n: the number of random shots to use to create the rtm_n image
+            """
             idxs = np.random.choice(243, size=int(n), replace=False) #random indices of n_shots to grab
 
-            exp = load_exp(os.path.join(self.path, self.slices[image_index[i]])) #dictionary of slice information
+            exp = load_exp(os.path.join(path, slices[img_idx[i]])) #dictionary of slice information
 
             shot_paths = [s for s in exp['shots'] if int(os.path.basename(s).split("-")[1][:-4]) in idxs] #individual shots
 
@@ -119,6 +138,19 @@ class RTM_N(TensorDataset):
 
             new_x = filterImage(image_k, exp['vel'], 0.95, 0.03, N=n, rescale=True, laplace=False).T
         
-            rtm_n_img[i] = self.transform(torch.from_numpy(new_x).unsqueeze(0).to(image_orig.device).type(image_orig.dtype))
+            return self.transform(torch.from_numpy(new_x).unsqueeze(0).to(device).type(dtype))
+        
+        #define compiling the individual rtm_n images as a function
+        #for parallel processing purposes
+        def collect_rtm_imgs(i, rtm_img):
+            rtm_n_img[i] = rtm_img
+
+        if torch.numel(n_shots) == 1:
+            img = get_single_rtm_img(0, n_shots.item(), self.path, self.slices, image_index, image_orig.device, image_orig.dtype)
+            collect_rtm_imgs(0, img)
+        else:
+            for i, n in enumerate(n_shots.squeeze().tolist()):
+                img = get_single_rtm_img(i, n, self.path, self.slices, image_index, image_orig.device, image_orig.dtype)
+                collect_rtm_imgs(i, img)
 
         return rtm_n_img
