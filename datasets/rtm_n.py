@@ -48,7 +48,7 @@ class RTM_N(TensorDataset):
                         self.W, self.H = load_exp(slice_path)['vel'].shape #shape is transposed of how it should be viewed
 
         #TODO: Remove this debugging line
-        self.slices = self.slices[0:100]
+        #self.slices = self.slices[0:100]
 
         #[N, 1, H, W] set of filtered and pre-processed RTM243 images in [0, 1]
         #same order as self.slices - use this fact to index and match n_shots
@@ -103,9 +103,7 @@ class RTM_N(TensorDataset):
             print("Starting to build dataset........")
             tic = time.time()
 
-        Parallel(n_jobs=2)(delayed(grab_and_process_imgs)(idx, sid, image_dataset) for idx, sid in enumerate(self.slices))
-        #for idx, sid in tqdm.tqdm(enumerate(self.slices)):
-        #    img = grab_and_process_imgs(idx, sid, image_dataset)
+        Parallel(n_jobs=-1)(delayed(grab_and_process_imgs)(idx, sid, image_dataset) for idx, sid in enumerate(self.slices))
 
         if self.debug:
             toc = time.time()
@@ -130,14 +128,27 @@ class RTM_N(TensorDataset):
         """
         image_orig, image_index = input_sample #the RTM_243 image and its index
 
-        rtm_n_img = torch.zeros_like(image_orig) #holds the images to be returned
+        folder = '/tmp/joblib_memmap' #temporary location to store results from parallel workers!
+        try:
+            os.mkdir(folder)
+        except FileExistsError:
+            pass
 
-        def get_single_rtm_img(i, n, path, slices, img_idx, device, dtype):
+        output_filename_memmap = os.path.join(folder, 'output_memmap')
+
+        rtm_n_img = np.memmap(output_filename_memmap, dtype=np.float32, 
+                   shape=(image_orig.shape[0], 1, self.H, self.W), mode='w+')
+
+        def get_single_rtm_img(i, n, path, slices, img_idx, output):
             """
             Edits rtm_n_img[i] to hold an rtm_n image.
             Args:
                 i: the index in the batch of the rtm_n image we are creating
                 n: the number of random shots to use to create the rtm_n image
+                path: the root folder containing all subslices
+                slices: list of names of all the subslices
+                img_idx: the indeces of the given image in the batch image within the subslice list
+                output: the final array where we store the rtm_n images
             """
             idxs = np.random.choice(243, size=int(n), replace=False) #random indices of n_shots to grab
 
@@ -152,20 +163,29 @@ class RTM_N(TensorDataset):
                 image_k = image_k + laplaceFilter(load_npy(spth)[20:-20, 20:-20])
 
             new_x = filterImage(image_k, exp['vel'], 0.95, 0.03, N=n, rescale=True, laplace=False).T
-        
-            return self.transform(torch.from_numpy(new_x).unsqueeze(0).to(device).type(dtype))
-        
-        #define compiling the individual rtm_n images as a function
-        #for parallel processing purposes
-        def collect_rtm_imgs(i, rtm_img):
-            rtm_n_img[i] = rtm_img
+
+            output[i] = np.expand_dims(new_x, axis=0)
 
         if torch.numel(n_shots) == 1:
-            img = get_single_rtm_img(0, n_shots.item(), self.path, self.slices, image_index, image_orig.device, image_orig.dtype)
-            collect_rtm_imgs(0, img)
+            #img = get_single_rtm_img(0, n_shots.item(), self.path, self.slices, image_index, image_orig.device, image_orig.dtype)
+            #collect_rtm_imgs(0, img)
+            get_single_rtm_img(0, n_shots.item(), self.path, self.slices, image_index, rtm_n_img) 
+
         else:
-            for i, n in enumerate(n_shots.squeeze().tolist()):
-                img = get_single_rtm_img(i, n, self.path, self.slices, image_index, image_orig.device, image_orig.dtype)
-                collect_rtm_imgs(i, img)
+            #for i, n in enumerate(n_shots.squeeze().tolist()):
+            #    img = get_single_rtm_img(i, n, self.path, self.slices, image_index, image_orig.device, image_orig.dtype)
+            #    collect_rtm_imgs(i, img)
+            Parallel(n_jobs=-1)(delayed(get_single_rtm_img)(i, n, self.path, self.slices, image_index, rtm_n_img) \
+                for i, n in enumerate(n_shots.squeeze().tolist()))
+
+        #convert the results to torch with all the correct attributes and transforms
+        rtm_n_img = torch.from_numpy(rtm_n_img).to(image_orig.device).type(image_orig.dtype)
+        rtm_n_img = self.transform(rtm_n_img)
+
+        try:
+            shutil.rmtree(folder)
+        except:  # noqa
+            print('Could not clean-up automatically.')
+
 
         return rtm_n_img
