@@ -3,9 +3,11 @@ import numpy as np
 import torch
 import tqdm
 import os
+import time
+import shutil
 
 from rtm_utils import load_exp, load_npy, filterImage, laplaceFilter
-from joblib import Parallel, delayed, parallel_backend
+from joblib import Parallel, delayed
 
 class RTM_N(TensorDataset):
     """
@@ -46,7 +48,7 @@ class RTM_N(TensorDataset):
                         self.W, self.H = load_exp(slice_path)['vel'].shape #shape is transposed of how it should be viewed
 
         #TODO: Remove this debugging line
-        self.slices = self.slices[0:40]
+        self.slices = self.slices[0:100]
 
         #[N, 1, H, W] set of filtered and pre-processed RTM243 images in [0, 1]
         #same order as self.slices - use this fact to index and match n_shots
@@ -67,42 +69,55 @@ class RTM_N(TensorDataset):
         """
         Gathers, compiles, pre-processes, and returns the RTM_243 images
         """
-        image_dataset = torch.zeros(len(self.slices), 1, self.H, self.W)  
 
-        def grab_and_process_imgs(i, s):
+        folder = '/tmp/joblib_memmap' #temporary location to store results from parallel workers!
+        try:
+            os.mkdir(folder)
+        except FileExistsError:
+            pass
+
+        output_filename_memmap = os.path.join(folder, 'output_memmap')
+
+        image_dataset = np.memmap(output_filename_memmap, dtype=np.float32, 
+                   shape=(len(self.slices), 1, self.H, self.W), mode='w+')
+
+        def grab_and_process_imgs(i, s, output):
+            """
+            Calculate the RTM-243 image for the given subslice ID and sotre it in a given index of an output array.
+            Modifies the contents of output.
+
+            Args:
+                i: index in the output argument to store the result
+                s: subslice id 
+                output: tensor or array which will hold the results. Contents are modified!
+            """
             rtm243_path = os.path.join(self.path, s)
             exp = load_exp(rtm243_path) #dictionary with the current subslice contents
 
             #filter and pre-process the rtm243 image 
             rtm243_img = filterImage(exp['image'], exp['vel'], 0.95, 0.03, N=1, rescale=True,laplace=True).T
 
-            return torch.from_numpy(rtm243_img).unsqueeze(0).float()  
-        
-        def collect_rtm_imgs(i, img)
-            image_dataset[i] = img
+            output[i] = np.expand_dims(rtm243_img, axis=0) #expand to [1, H, W]
 
         if self.debug:
             print("Starting to build dataset........")
-            #with parallel_backend('threading', n_jobs=2, ):
+            tic = time.time()
 
-            #"""
-                for idx, sid in tqdm.tqdm(enumerate(self.slices)):
-                    img = grab_and_process_imgs(idx, sid)
-                    collect_rtm_imgs(idx, img)
-            #"""
-        else:
-            #with parallel_backend('threading', n_jobs=2, ):
-
-            #"""
-            for idx, sid in enumerate(self.slices):
-                img = grab_and_process_imgs(idx, sid)
-                collect_rtm_imgs(idx, img)
-            #"""
+        Parallel(n_jobs=2)(delayed(grab_and_process_imgs)(idx, sid, image_dataset) for idx, sid in enumerate(self.slices))
+        #for idx, sid in tqdm.tqdm(enumerate(self.slices)):
+        #    img = grab_and_process_imgs(idx, sid, image_dataset)
 
         if self.debug:
+            toc = time.time()
+            print("TIME ELAPSED: ", str(toc - tic))
             print("Finished building dataset!")
+
+        try:
+            shutil.rmtree(folder)
+        except:  # noqa
+            print('Could not clean-up automatically.')
         
-        return image_dataset
+        return torch.from_numpy(image_dataset).float()
     
     def grab_rtm_image(self, input_sample, n_shots):
         """
