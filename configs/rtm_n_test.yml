@@ -1,8 +1,8 @@
 training:
   batch_size: 16
-  n_epochs: 1000  #number of training epochs - superceded by n_iters 
-  n_iters: 1001  #maximum number of training iterations - stops before n_epochs if needed
-  snapshot_freq: 50 #frequency with which to save weights and sample from output
+  n_epochs: 20000  #number of training epochs - superceded by n_iters 
+  n_iters: 20001  #maximum number of training iterations - stops before n_epochs if needed
+  snapshot_freq: 1000 #frequency with which to save weights and sample from output
   snapshot_sampling: true 
   anneal_power: 2 
   log_all_sigmas: false
@@ -44,7 +44,7 @@ data:
   logit_transform: false
   uniform_dequantization: false
   gaussian_dequantization: false
-  random_flip: true
+  random_flip: false
   rescaled: false
   num_workers: 8
 

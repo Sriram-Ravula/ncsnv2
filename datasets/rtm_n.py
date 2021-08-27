@@ -167,14 +167,9 @@ class RTM_N(TensorDataset):
             output[i] = np.expand_dims(new_x, axis=0)
 
         if torch.numel(n_shots) == 1:
-            #img = get_single_rtm_img(0, n_shots.item(), self.path, self.slices, image_index, image_orig.device, image_orig.dtype)
-            #collect_rtm_imgs(0, img)
             get_single_rtm_img(0, n_shots.item(), self.path, self.slices, image_index, rtm_n_img) 
 
         else:
-            #for i, n in enumerate(n_shots.squeeze().tolist()):
-            #    img = get_single_rtm_img(i, n, self.path, self.slices, image_index, image_orig.device, image_orig.dtype)
-            #    collect_rtm_imgs(i, img)
             Parallel(n_jobs=-1)(delayed(get_single_rtm_img)(i, n, self.path, self.slices, image_index, rtm_n_img) \
                 for i, n in enumerate(n_shots.squeeze().tolist()))
 
