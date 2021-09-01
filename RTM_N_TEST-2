@@ -1,0 +1,157 @@
+main.py:39: YAMLLoadWarning: calling yaml.load() without Loader=... is deprecated, as the default Loader is unsafe. Please read https://msg.pyyaml.org/load for full details.
+  config = yaml.load(f)
+INFO - main.py - 2021-09-01 14:31:31,338 - Using device: cuda
+INFO - main.py - 2021-09-01 14:31:31,345 - Writing log file to /scratch/04703/sravula/experiments/logs/rtm_n_big2
+INFO - main.py - 2021-09-01 14:31:31,345 - Exp instance id = 33407
+INFO - main.py - 2021-09-01 14:31:31,345 - Exp comment = 
+INFO - main.py - 2021-09-01 14:31:31,345 - Config =
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+data: !!python/object:argparse.Namespace
+  channels: 1
+  dataset: RTM_N
+  gaussian_dequantization: false
+  image_size: 256
+  logit_transform: false
+  num_workers: 8
+  random_flip: false
+  rescaled: false
+  uniform_dequantization: false
+device: !!python/object/apply:torch.device
+- cuda
+fast_fid: !!python/object:argparse.Namespace
+  batch_size: 1000
+  begin_ckpt: 100000
+  end_ckpt: 80000
+  ensemble: false
+  n_steps_each: 3
+  num_samples: 1000
+  step_lr: 9.0e-07
+  verbose: false
+model: !!python/object:argparse.Namespace
+  ema: true
+  ema_rate: 0.999
+  lambdas_list:
+  - 55.5
+  - 53.66
+  - 52.2
+  - 51.0
+  - 49.99
+  - 49.11
+  - 48.35
+  - 47.67
+  - 47.06
+  - 46.51
+  - 46.02
+  - 45.56
+  - 45.14
+  - 44.75
+  - 44.38
+  - 44.04
+  - 42.88
+  - 41.94
+  - 41.16
+  - 40.5
+  - 39.92
+  - 38.76
+  - 37.85
+  - 37.12
+  - 36.51
+  - 35.99
+  - 35.53
+  - 34.77
+  - 34.15
+  - 33.63
+  - 33.19
+  - 32.8
+  - 32.15
+  n_shots:
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  - 20
+  - 24
+  - 28
+  - 32
+  - 36
+  - 40
+  - 50
+  - 60
+  - 70
+  - 80
+  - 90
+  - 100
+  - 120
+  - 140
+  - 160
+  - 180
+  - 200
+  - 240
+  ngf: 128
+  nonlinearity: elu
+  normalization: InstanceNorm++
+  num_classes: 33
+  sigma_dist: rtm
+  spec_norm: false
+optim: !!python/object:argparse.Namespace
+  amsgrad: false
+  beta1: 0.9
+  eps: 1.0e-08
+  lr: 0.0001
+  optimizer: Adam
+  weight_decay: 0.0
+sampling: !!python/object:argparse.Namespace
+  batch_size: 36
+  ckpt_id: 80000
+  data_init: false
+  denoise: true
+  fid: false
+  final_only: true
+  inpainting: false
+  interpolation: false
+  n_interpolations: 8
+  n_steps_each: 10
+  num_samples4fid: 10000
+  step_lr: 1.6e-06
+test: !!python/object:argparse.Namespace
+  batch_size: 100
+  begin_ckpt: 10
+  end_ckpt: 100
+training: !!python/object:argparse.Namespace
+  anneal_power: 2
+  batch_size: 16
+  log_all_sigmas: false
+  n_epochs: 30000
+  n_iters: 30001
+  snapshot_freq: 1000
+  snapshot_sampling: true
+
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Starting to build dataset........
+TIME ELAPSED:  400.23108673095703
+Finished building dataset!
+  0%|          | 0/30000 [00:00<?, ?it/s]/scratch/04703/sravula/ncsnv2/losses/dsm.py:35: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  n_shots = torch.tensor(n_shots)
+/scratch/04703/sravula/ncsnv2/losses/dsm.py:36: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  lambdas_list = torch.tensor(lambdas_list)
+INFO - ncsn_runner.py - 2021-09-01 14:41:36,705 - step: 1, loss: 104.86006164550781
+INFO - ncsn_runner.py - 2021-09-01 14:41:55,398 - step: 2, loss: 1901.5518798828125
+INFO - ncsn_runner.py - 2021-09-01 14:42:07,434 - step: 3, loss: 183.40367126464844
+INFO - ncsn_runner.py - 2021-09-01 14:42:18,739 - step: 4, loss: 31.712257385253906
+INFO - ncsn_runner.py - 2021-09-01 14:42:35,567 - step: 5, loss: 8.749670028686523
+INFO - ncsn_runner.py - 2021-09-01 14:42:47,787 - step: 6, loss: 5.759509086608887
+INFO - ncsn_runner.py - 2021-09-01 14:43:02,452 - step: 7, loss: 6.207594394683838
+INFO - ncsn_runner.py - 2021-09-01 14:43:15,561 - step: 8, loss: 3.624980926513672
+INFO - ncsn_runner.py - 2021-09-01 14:43:27,470 - step: 9, loss: 3.642925262451172
+INFO - ncsn_runner.py - 2021-09-01 14:43:40,250 - step: 10, loss: 3.3949294090270996

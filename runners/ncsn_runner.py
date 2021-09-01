@@ -67,6 +67,7 @@ class NCSNRunner():
 
         #If desired, pick up training where we left off
         if self.args.resume_training:
+            print("\n\nRESUMING TRAINING - LOADING SAVED WEIGHTS\n\n")
             states = torch.load(os.path.join(self.args.log_path, 'checkpoint.pth'))
             score.load_state_dict(states[0])
             ### Make sure we can resume with different eps
