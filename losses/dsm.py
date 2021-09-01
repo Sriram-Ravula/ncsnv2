@@ -60,7 +60,7 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, 
     scores = scores.view(scores.shape[0], -1)
 
     #(7) calculate the loss
-    loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * lambda_n.squeeze()
+    loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * lambda_n.squeeze() ** 2 #TODO added the power factor to lambda
 
     if hook is not None:
         hook(loss, labels)

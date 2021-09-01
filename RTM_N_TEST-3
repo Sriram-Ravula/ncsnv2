@@ -1,0 +1,477 @@
+main.py:39: YAMLLoadWarning: calling yaml.load() without Loader=... is deprecated, as the default Loader is unsafe. Please read https://msg.pyyaml.org/load for full details.
+  config = yaml.load(f)
+INFO - main.py - 2021-09-01 14:56:44,153 - Using device: cuda
+INFO - main.py - 2021-09-01 14:56:44,169 - Writing log file to /scratch/04703/sravula/experiments/logs/rtm_n_big3
+INFO - main.py - 2021-09-01 14:56:44,169 - Exp instance id = 20575
+INFO - main.py - 2021-09-01 14:56:44,169 - Exp comment = 
+INFO - main.py - 2021-09-01 14:56:44,169 - Config =
+>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+data: !!python/object:argparse.Namespace
+  channels: 1
+  dataset: RTM_N
+  gaussian_dequantization: false
+  image_size: 256
+  logit_transform: false
+  num_workers: 8
+  random_flip: false
+  rescaled: false
+  uniform_dequantization: false
+device: !!python/object/apply:torch.device
+- cuda
+fast_fid: !!python/object:argparse.Namespace
+  batch_size: 1000
+  begin_ckpt: 100000
+  end_ckpt: 80000
+  ensemble: false
+  n_steps_each: 3
+  num_samples: 1000
+  step_lr: 9.0e-07
+  verbose: false
+model: !!python/object:argparse.Namespace
+  ema: true
+  ema_rate: 0.999
+  lambdas_list:
+  - 55.5
+  - 53.66
+  - 52.2
+  - 51.0
+  - 49.99
+  - 49.11
+  - 48.35
+  - 47.67
+  - 47.06
+  - 46.51
+  - 46.02
+  - 45.56
+  - 45.14
+  - 44.75
+  - 44.38
+  - 44.04
+  - 42.88
+  - 41.94
+  - 41.16
+  - 40.5
+  - 39.92
+  - 38.76
+  - 37.85
+  - 37.12
+  - 36.51
+  - 35.99
+  - 35.53
+  - 34.77
+  - 34.15
+  - 33.63
+  - 33.19
+  - 32.8
+  - 32.15
+  n_shots:
+  - 5
+  - 6
+  - 7
+  - 8
+  - 9
+  - 10
+  - 11
+  - 12
+  - 13
+  - 14
+  - 15
+  - 16
+  - 17
+  - 18
+  - 19
+  - 20
+  - 24
+  - 28
+  - 32
+  - 36
+  - 40
+  - 50
+  - 60
+  - 70
+  - 80
+  - 90
+  - 100
+  - 120
+  - 140
+  - 160
+  - 180
+  - 200
+  - 240
+  ngf: 128
+  nonlinearity: elu
+  normalization: InstanceNorm++
+  num_classes: 33
+  sigma_dist: rtm
+  spec_norm: false
+optim: !!python/object:argparse.Namespace
+  amsgrad: false
+  beta1: 0.9
+  eps: 1.0e-08
+  lr: 0.0001
+  optimizer: Adam
+  weight_decay: 0.0
+sampling: !!python/object:argparse.Namespace
+  batch_size: 36
+  ckpt_id: 80000
+  data_init: false
+  denoise: true
+  fid: false
+  final_only: true
+  inpainting: false
+  interpolation: false
+  n_interpolations: 8
+  n_steps_each: 10
+  num_samples4fid: 10000
+  step_lr: 1.6e-06
+test: !!python/object:argparse.Namespace
+  batch_size: 100
+  begin_ckpt: 10
+  end_ckpt: 100
+training: !!python/object:argparse.Namespace
+  anneal_power: 2
+  batch_size: 16
+  log_all_sigmas: false
+  n_epochs: 30000
+  n_iters: 30001
+  snapshot_freq: 1000
+  snapshot_sampling: true
+
+<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+Starting to build dataset........
+TIME ELAPSED:  420.3628535270691
+Finished building dataset!
+  0%|          | 0/30000 [00:00<?, ?it/s]/scratch/04703/sravula/ncsnv2/losses/dsm.py:35: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  n_shots = torch.tensor(n_shots)
+/scratch/04703/sravula/ncsnv2/losses/dsm.py:36: UserWarning: To copy construct from a tensor, it is recommended to use sourceTensor.clone().detach() or sourceTensor.clone().detach().requires_grad_(True), rather than torch.tensor(sourceTensor).
+  lambdas_list = torch.tensor(lambdas_list)
+INFO - ncsn_runner.py - 2021-09-01 15:07:28,120 - step: 1, loss: 4371.4912109375
+INFO - ncsn_runner.py - 2021-09-01 15:07:46,801 - step: 2, loss: 75687.0390625
+INFO - ncsn_runner.py - 2021-09-01 15:07:58,254 - step: 3, loss: 7588.86083984375
+INFO - ncsn_runner.py - 2021-09-01 15:08:09,544 - step: 4, loss: 1353.0611572265625
+INFO - ncsn_runner.py - 2021-09-01 15:08:25,952 - step: 5, loss: 325.3172607421875
+INFO - ncsn_runner.py - 2021-09-01 15:08:38,055 - step: 6, loss: 389.527099609375
+INFO - ncsn_runner.py - 2021-09-01 15:08:52,340 - step: 7, loss: 68.12134552001953
+INFO - ncsn_runner.py - 2021-09-01 15:09:04,903 - step: 8, loss: 78.25553894042969
+INFO - ncsn_runner.py - 2021-09-01 15:09:16,969 - step: 9, loss: 105.48092651367188
+INFO - ncsn_runner.py - 2021-09-01 15:09:29,402 - step: 10, loss: 60.24195098876953
+INFO - ncsn_runner.py - 2021-09-01 15:09:40,358 - step: 11, loss: 29.56821632385254
+INFO - ncsn_runner.py - 2021-09-01 15:09:52,949 - step: 12, loss: 61.2508430480957
+INFO - ncsn_runner.py - 2021-09-01 15:10:05,382 - step: 13, loss: 76.1604995727539
+INFO - ncsn_runner.py - 2021-09-01 15:10:16,159 - step: 14, loss: 45.258270263671875
+INFO - ncsn_runner.py - 2021-09-01 15:10:29,085 - step: 15, loss: 26.222824096679688
+INFO - ncsn_runner.py - 2021-09-01 15:10:41,219 - step: 16, loss: 40.32221984863281
+INFO - ncsn_runner.py - 2021-09-01 15:10:55,604 - step: 17, loss: 49.57086181640625
+INFO - ncsn_runner.py - 2021-09-01 15:11:05,491 - step: 18, loss: 35.717979431152344
+INFO - ncsn_runner.py - 2021-09-01 15:11:16,890 - step: 19, loss: 20.256858825683594
+INFO - ncsn_runner.py - 2021-09-01 15:11:27,787 - step: 20, loss: 25.357074737548828
+INFO - ncsn_runner.py - 2021-09-01 15:11:39,451 - step: 21, loss: 34.22496032714844
+INFO - ncsn_runner.py - 2021-09-01 15:11:49,812 - step: 22, loss: 25.857690811157227
+INFO - ncsn_runner.py - 2021-09-01 15:12:04,557 - step: 23, loss: 14.073606491088867
+INFO - ncsn_runner.py - 2021-09-01 15:12:15,662 - step: 24, loss: 15.127058029174805
+INFO - ncsn_runner.py - 2021-09-01 15:12:26,171 - step: 25, loss: 21.415733337402344
+INFO - ncsn_runner.py - 2021-09-01 15:12:38,862 - step: 26, loss: 17.80966567993164
+INFO - ncsn_runner.py - 2021-09-01 15:12:50,531 - step: 27, loss: 9.569408416748047
+INFO - ncsn_runner.py - 2021-09-01 15:12:58,114 - step: 28, loss: 10.537436485290527
+INFO - ncsn_runner.py - 2021-09-01 15:13:12,298 - step: 29, loss: 14.82421588897705
+INFO - ncsn_runner.py - 2021-09-01 15:13:26,944 - step: 30, loss: 12.35567855834961
+INFO - ncsn_runner.py - 2021-09-01 15:13:41,435 - step: 31, loss: 6.670122146606445
+INFO - ncsn_runner.py - 2021-09-01 15:13:55,922 - step: 32, loss: 7.044086456298828
+INFO - ncsn_runner.py - 2021-09-01 15:14:10,067 - step: 33, loss: 10.379804611206055
+INFO - ncsn_runner.py - 2021-09-01 15:14:24,852 - step: 34, loss: 9.525440216064453
+INFO - ncsn_runner.py - 2021-09-01 15:14:36,400 - step: 35, loss: 5.550124168395996
+INFO - ncsn_runner.py - 2021-09-01 15:14:51,018 - step: 36, loss: 6.162014961242676
+INFO - ncsn_runner.py - 2021-09-01 15:15:04,948 - step: 37, loss: 8.935688972473145
+INFO - ncsn_runner.py - 2021-09-01 15:15:19,219 - step: 38, loss: 7.058789253234863
+INFO - ncsn_runner.py - 2021-09-01 15:15:30,929 - step: 39, loss: 4.719716548919678
+INFO - ncsn_runner.py - 2021-09-01 15:15:45,787 - step: 40, loss: 5.56784725189209
+INFO - ncsn_runner.py - 2021-09-01 15:15:54,558 - step: 41, loss: 6.883638381958008
+INFO - ncsn_runner.py - 2021-09-01 15:16:07,239 - step: 42, loss: 5.567958831787109
+INFO - ncsn_runner.py - 2021-09-01 15:16:13,790 - step: 43, loss: 3.92887020111084
+INFO - ncsn_runner.py - 2021-09-01 15:16:28,634 - step: 44, loss: 5.125626087188721
+INFO - ncsn_runner.py - 2021-09-01 15:16:43,035 - step: 45, loss: 6.028421401977539
+INFO - ncsn_runner.py - 2021-09-01 15:16:55,319 - step: 46, loss: 4.394696235656738
+INFO - ncsn_runner.py - 2021-09-01 15:17:01,203 - step: 47, loss: 3.5910604000091553
+INFO - ncsn_runner.py - 2021-09-01 15:17:13,618 - step: 48, loss: 4.662121295928955
+INFO - ncsn_runner.py - 2021-09-01 15:17:26,392 - step: 49, loss: 4.570678234100342
+INFO - ncsn_runner.py - 2021-09-01 15:17:36,702 - step: 50, loss: 3.830195665359497
+INFO - ncsn_runner.py - 2021-09-01 15:17:51,562 - step: 51, loss: 3.8049793243408203
+INFO - ncsn_runner.py - 2021-09-01 15:18:03,238 - step: 52, loss: 4.169860363006592
+INFO - ncsn_runner.py - 2021-09-01 15:18:12,435 - step: 53, loss: 4.094115734100342
+INFO - ncsn_runner.py - 2021-09-01 15:18:24,732 - step: 54, loss: 3.249525547027588
+INFO - ncsn_runner.py - 2021-09-01 15:18:38,795 - step: 55, loss: 3.8002147674560547
+INFO - ncsn_runner.py - 2021-09-01 15:18:49,178 - step: 56, loss: 3.979309558868408
+INFO - ncsn_runner.py - 2021-09-01 15:19:00,410 - step: 57, loss: 3.456772804260254
+INFO - ncsn_runner.py - 2021-09-01 15:19:09,393 - step: 58, loss: 3.2114388942718506
+INFO - ncsn_runner.py - 2021-09-01 15:19:19,754 - step: 59, loss: 3.718515157699585
+INFO - ncsn_runner.py - 2021-09-01 15:19:31,131 - step: 60, loss: 3.304079532623291
+INFO - ncsn_runner.py - 2021-09-01 15:19:43,324 - step: 61, loss: 3.1053311824798584
+INFO - ncsn_runner.py - 2021-09-01 15:19:55,008 - step: 62, loss: 3.148293972015381
+INFO - ncsn_runner.py - 2021-09-01 15:20:02,696 - step: 63, loss: 3.540792942047119
+INFO - ncsn_runner.py - 2021-09-01 15:20:09,933 - step: 64, loss: 3.008397102355957
+INFO - ncsn_runner.py - 2021-09-01 15:20:24,297 - step: 65, loss: 3.1429600715637207
+INFO - ncsn_runner.py - 2021-09-01 15:20:36,464 - step: 66, loss: 3.0526013374328613
+INFO - ncsn_runner.py - 2021-09-01 15:20:50,901 - step: 67, loss: 2.8226211071014404
+INFO - ncsn_runner.py - 2021-09-01 15:21:00,683 - step: 68, loss: 2.7725024223327637
+INFO - ncsn_runner.py - 2021-09-01 15:21:11,574 - step: 69, loss: 2.8252038955688477
+INFO - ncsn_runner.py - 2021-09-01 15:21:26,267 - step: 70, loss: 2.7734127044677734
+INFO - ncsn_runner.py - 2021-09-01 15:21:37,635 - step: 71, loss: 2.611534357070923
+INFO - ncsn_runner.py - 2021-09-01 15:21:52,980 - step: 72, loss: 2.7912909984588623
+INFO - ncsn_runner.py - 2021-09-01 15:22:05,733 - step: 73, loss: 2.7126550674438477
+INFO - ncsn_runner.py - 2021-09-01 15:22:17,190 - step: 74, loss: 2.565253257751465
+INFO - ncsn_runner.py - 2021-09-01 15:22:28,360 - step: 75, loss: 2.4902586936950684
+INFO - ncsn_runner.py - 2021-09-01 15:22:40,418 - step: 76, loss: 2.4031457901000977
+INFO - ncsn_runner.py - 2021-09-01 15:22:48,319 - step: 77, loss: 2.5401835441589355
+INFO - ncsn_runner.py - 2021-09-01 15:23:02,030 - step: 78, loss: 2.41774845123291
+INFO - ncsn_runner.py - 2021-09-01 15:23:16,572 - step: 79, loss: 2.3407979011535645
+INFO - ncsn_runner.py - 2021-09-01 15:23:31,514 - step: 80, loss: 2.2709500789642334
+INFO - ncsn_runner.py - 2021-09-01 15:23:45,616 - step: 81, loss: 2.3603906631469727
+INFO - ncsn_runner.py - 2021-09-01 15:23:57,317 - step: 82, loss: 2.4123520851135254
+INFO - ncsn_runner.py - 2021-09-01 15:24:06,765 - step: 83, loss: 2.311342239379883
+INFO - ncsn_runner.py - 2021-09-01 15:24:21,535 - step: 84, loss: 2.249154567718506
+INFO - ncsn_runner.py - 2021-09-01 15:24:36,064 - step: 85, loss: 2.3405590057373047
+INFO - ncsn_runner.py - 2021-09-01 15:24:47,462 - step: 86, loss: 2.0919241905212402
+INFO - ncsn_runner.py - 2021-09-01 15:24:58,966 - step: 87, loss: 2.3741984367370605
+INFO - ncsn_runner.py - 2021-09-01 15:25:13,311 - step: 88, loss: 2.062303066253662
+INFO - ncsn_runner.py - 2021-09-01 15:25:28,292 - step: 89, loss: 2.1247172355651855
+INFO - ncsn_runner.py - 2021-09-01 15:25:39,928 - step: 90, loss: 2.0221896171569824
+INFO - ncsn_runner.py - 2021-09-01 15:25:51,142 - step: 91, loss: 2.0604445934295654
+INFO - ncsn_runner.py - 2021-09-01 15:26:05,562 - step: 92, loss: 2.127166986465454
+INFO - ncsn_runner.py - 2021-09-01 15:26:20,489 - step: 93, loss: 2.079240560531616
+INFO - ncsn_runner.py - 2021-09-01 15:26:32,683 - step: 94, loss: 2.192197322845459
+INFO - ncsn_runner.py - 2021-09-01 15:26:44,824 - step: 95, loss: 2.3114030361175537
+INFO - ncsn_runner.py - 2021-09-01 15:26:56,368 - step: 96, loss: 1.8622851371765137
+INFO - ncsn_runner.py - 2021-09-01 15:27:11,058 - step: 97, loss: 1.858604073524475
+INFO - ncsn_runner.py - 2021-09-01 15:27:25,701 - step: 98, loss: 1.839929461479187
+INFO - ncsn_runner.py - 2021-09-01 15:27:38,079 - step: 99, loss: 1.8295073509216309
+INFO - ncsn_runner.py - 2021-09-01 15:27:52,635 - step: 100, loss: 1.9543324708938599
+INFO - ncsn_runner.py - 2021-09-01 15:27:54,600 - step: 100, test_loss: 37318.72265625
+INFO - ncsn_runner.py - 2021-09-01 15:28:08,812 - step: 101, loss: 1.8331366777420044
+INFO - ncsn_runner.py - 2021-09-01 15:28:21,708 - step: 102, loss: 1.7777029275894165
+INFO - ncsn_runner.py - 2021-09-01 15:28:36,368 - step: 103, loss: 2.0008606910705566
+INFO - ncsn_runner.py - 2021-09-01 15:28:50,616 - step: 104, loss: 1.663130521774292
+INFO - ncsn_runner.py - 2021-09-01 15:29:02,723 - step: 105, loss: 1.8271169662475586
+INFO - ncsn_runner.py - 2021-09-01 15:29:15,183 - step: 106, loss: 1.761459231376648
+INFO - ncsn_runner.py - 2021-09-01 15:29:28,145 - step: 107, loss: 1.8066167831420898
+INFO - ncsn_runner.py - 2021-09-01 15:29:39,979 - step: 108, loss: 1.638538122177124
+INFO - ncsn_runner.py - 2021-09-01 15:29:52,054 - step: 109, loss: 1.7346129417419434
+INFO - ncsn_runner.py - 2021-09-01 15:30:07,447 - step: 110, loss: 1.6772390604019165
+INFO - ncsn_runner.py - 2021-09-01 15:30:22,038 - step: 111, loss: 1.608912706375122
+INFO - ncsn_runner.py - 2021-09-01 15:30:36,724 - step: 112, loss: 1.6209383010864258
+INFO - ncsn_runner.py - 2021-09-01 15:30:51,487 - step: 113, loss: 1.6083956956863403
+INFO - ncsn_runner.py - 2021-09-01 15:31:06,327 - step: 114, loss: 1.52107572555542
+INFO - ncsn_runner.py - 2021-09-01 15:31:20,149 - step: 115, loss: 1.8497861623764038
+INFO - ncsn_runner.py - 2021-09-01 15:31:32,780 - step: 116, loss: 1.5688422918319702
+INFO - ncsn_runner.py - 2021-09-01 15:31:47,040 - step: 117, loss: 1.5490610599517822
+INFO - ncsn_runner.py - 2021-09-01 15:31:57,722 - step: 118, loss: 1.5738545656204224
+INFO - ncsn_runner.py - 2021-09-01 15:32:10,093 - step: 119, loss: 1.547003149986267
+INFO - ncsn_runner.py - 2021-09-01 15:32:24,639 - step: 120, loss: 1.7172759771347046
+INFO - ncsn_runner.py - 2021-09-01 15:32:37,369 - step: 121, loss: 1.507648229598999
+INFO - ncsn_runner.py - 2021-09-01 15:32:45,428 - step: 122, loss: 1.5939652919769287
+INFO - ncsn_runner.py - 2021-09-01 15:32:57,085 - step: 123, loss: 1.4404675960540771
+INFO - ncsn_runner.py - 2021-09-01 15:33:11,562 - step: 124, loss: 1.470015048980713
+INFO - ncsn_runner.py - 2021-09-01 15:33:23,656 - step: 125, loss: 1.6096028089523315
+INFO - ncsn_runner.py - 2021-09-01 15:33:36,540 - step: 126, loss: 1.335352897644043
+INFO - ncsn_runner.py - 2021-09-01 15:33:51,422 - step: 127, loss: 1.4719290733337402
+INFO - ncsn_runner.py - 2021-09-01 15:34:06,124 - step: 128, loss: 1.4247467517852783
+INFO - ncsn_runner.py - 2021-09-01 15:34:20,287 - step: 129, loss: 1.3744211196899414
+INFO - ncsn_runner.py - 2021-09-01 15:34:30,965 - step: 130, loss: 1.4919562339782715
+INFO - ncsn_runner.py - 2021-09-01 15:34:45,616 - step: 131, loss: 1.268008828163147
+INFO - ncsn_runner.py - 2021-09-01 15:34:57,970 - step: 132, loss: 1.379241943359375
+INFO - ncsn_runner.py - 2021-09-01 15:35:07,919 - step: 133, loss: 1.243729829788208
+INFO - ncsn_runner.py - 2021-09-01 15:35:22,356 - step: 134, loss: 1.258596658706665
+INFO - ncsn_runner.py - 2021-09-01 15:35:28,963 - step: 135, loss: 1.3943467140197754
+INFO - ncsn_runner.py - 2021-09-01 15:35:43,390 - step: 136, loss: 1.1828274726867676
+INFO - ncsn_runner.py - 2021-09-01 15:35:54,917 - step: 137, loss: 1.4655321836471558
+INFO - ncsn_runner.py - 2021-09-01 15:36:06,718 - step: 138, loss: 1.1628944873809814
+INFO - ncsn_runner.py - 2021-09-01 15:36:21,066 - step: 139, loss: 1.2720355987548828
+INFO - ncsn_runner.py - 2021-09-01 15:36:32,519 - step: 140, loss: 1.2530344724655151
+INFO - ncsn_runner.py - 2021-09-01 15:36:41,929 - step: 141, loss: 1.3816633224487305
+INFO - ncsn_runner.py - 2021-09-01 15:36:53,472 - step: 142, loss: 1.355884313583374
+INFO - ncsn_runner.py - 2021-09-01 15:37:08,177 - step: 143, loss: 1.324675440788269
+INFO - ncsn_runner.py - 2021-09-01 15:37:19,169 - step: 144, loss: 1.2065300941467285
+INFO - ncsn_runner.py - 2021-09-01 15:37:30,028 - step: 145, loss: 1.1821917295455933
+INFO - ncsn_runner.py - 2021-09-01 15:37:44,279 - step: 146, loss: 1.099392294883728
+INFO - ncsn_runner.py - 2021-09-01 15:37:58,783 - step: 147, loss: 1.2284663915634155
+INFO - ncsn_runner.py - 2021-09-01 15:38:13,636 - step: 148, loss: 1.1253247261047363
+INFO - ncsn_runner.py - 2021-09-01 15:38:28,714 - step: 149, loss: 1.0923267602920532
+INFO - ncsn_runner.py - 2021-09-01 15:38:43,085 - step: 150, loss: 1.0162674188613892
+INFO - ncsn_runner.py - 2021-09-01 15:38:52,953 - step: 151, loss: 0.951361358165741
+INFO - ncsn_runner.py - 2021-09-01 15:39:03,375 - step: 152, loss: 1.0196126699447632
+INFO - ncsn_runner.py - 2021-09-01 15:39:18,038 - step: 153, loss: 1.0726139545440674
+INFO - ncsn_runner.py - 2021-09-01 15:39:27,391 - step: 154, loss: 1.0097827911376953
+INFO - ncsn_runner.py - 2021-09-01 15:39:38,508 - step: 155, loss: 1.0526752471923828
+INFO - ncsn_runner.py - 2021-09-01 15:39:52,940 - step: 156, loss: 1.0084049701690674
+INFO - ncsn_runner.py - 2021-09-01 15:40:04,293 - step: 157, loss: 1.0078799724578857
+INFO - ncsn_runner.py - 2021-09-01 15:40:18,652 - step: 158, loss: 1.0533045530319214
+INFO - ncsn_runner.py - 2021-09-01 15:40:32,161 - step: 159, loss: 0.9555808305740356
+INFO - ncsn_runner.py - 2021-09-01 15:40:44,057 - step: 160, loss: 1.0444369316101074
+INFO - ncsn_runner.py - 2021-09-01 15:40:51,871 - step: 161, loss: 0.9915753602981567
+INFO - ncsn_runner.py - 2021-09-01 15:41:06,768 - step: 162, loss: 1.104013442993164
+INFO - ncsn_runner.py - 2021-09-01 15:41:17,226 - step: 163, loss: 1.1103010177612305
+INFO - ncsn_runner.py - 2021-09-01 15:41:29,487 - step: 164, loss: 0.9529008865356445
+INFO - ncsn_runner.py - 2021-09-01 15:41:37,592 - step: 165, loss: 0.9179931282997131
+INFO - ncsn_runner.py - 2021-09-01 15:41:49,755 - step: 166, loss: 0.9214593768119812
+INFO - ncsn_runner.py - 2021-09-01 15:42:04,668 - step: 167, loss: 0.9577134847640991
+INFO - ncsn_runner.py - 2021-09-01 15:42:18,871 - step: 168, loss: 0.832958459854126
+INFO - ncsn_runner.py - 2021-09-01 15:42:31,310 - step: 169, loss: 0.8734460473060608
+INFO - ncsn_runner.py - 2021-09-01 15:42:45,542 - step: 170, loss: 0.845337986946106
+INFO - ncsn_runner.py - 2021-09-01 15:42:56,433 - step: 171, loss: 0.9018508195877075
+INFO - ncsn_runner.py - 2021-09-01 15:43:10,742 - step: 172, loss: 0.9684340953826904
+INFO - ncsn_runner.py - 2021-09-01 15:43:20,829 - step: 173, loss: 0.8669136166572571
+INFO - ncsn_runner.py - 2021-09-01 15:43:33,675 - step: 174, loss: 0.8823707103729248
+INFO - ncsn_runner.py - 2021-09-01 15:43:42,482 - step: 175, loss: 0.9579581618309021
+INFO - ncsn_runner.py - 2021-09-01 15:43:54,113 - step: 176, loss: 0.9403361082077026
+INFO - ncsn_runner.py - 2021-09-01 15:44:08,619 - step: 177, loss: 0.7280807495117188
+INFO - ncsn_runner.py - 2021-09-01 15:44:23,131 - step: 178, loss: 0.9322763681411743
+INFO - ncsn_runner.py - 2021-09-01 15:44:37,390 - step: 179, loss: 0.8555321097373962
+INFO - ncsn_runner.py - 2021-09-01 15:44:49,890 - step: 180, loss: 0.7944274544715881
+INFO - ncsn_runner.py - 2021-09-01 15:44:56,626 - step: 181, loss: 0.8934794664382935
+INFO - ncsn_runner.py - 2021-09-01 15:45:07,810 - step: 182, loss: 0.7498274445533752
+INFO - ncsn_runner.py - 2021-09-01 15:45:20,365 - step: 183, loss: 0.814631462097168
+INFO - ncsn_runner.py - 2021-09-01 15:45:32,774 - step: 184, loss: 0.7743958234786987
+INFO - ncsn_runner.py - 2021-09-01 15:45:44,939 - step: 185, loss: 0.9361740350723267
+INFO - ncsn_runner.py - 2021-09-01 15:45:59,278 - step: 186, loss: 0.730128824710846
+INFO - ncsn_runner.py - 2021-09-01 15:46:13,544 - step: 187, loss: 0.7526174783706665
+INFO - ncsn_runner.py - 2021-09-01 15:46:27,515 - step: 188, loss: 0.7526934742927551
+INFO - ncsn_runner.py - 2021-09-01 15:46:39,243 - step: 189, loss: 0.8005775213241577
+INFO - ncsn_runner.py - 2021-09-01 15:46:51,683 - step: 190, loss: 0.72747802734375
+INFO - ncsn_runner.py - 2021-09-01 15:47:05,920 - step: 191, loss: 0.8288464546203613
+INFO - ncsn_runner.py - 2021-09-01 15:47:20,550 - step: 192, loss: 0.7133507132530212
+INFO - ncsn_runner.py - 2021-09-01 15:47:35,084 - step: 193, loss: 0.857272207736969
+INFO - ncsn_runner.py - 2021-09-01 15:47:46,077 - step: 194, loss: 0.6437696218490601
+INFO - ncsn_runner.py - 2021-09-01 15:47:57,639 - step: 195, loss: 0.6889703869819641
+INFO - ncsn_runner.py - 2021-09-01 15:48:09,675 - step: 196, loss: 0.7930200099945068
+INFO - ncsn_runner.py - 2021-09-01 15:48:24,288 - step: 197, loss: 0.6337447166442871
+INFO - ncsn_runner.py - 2021-09-01 15:48:39,014 - step: 198, loss: 0.7802525162696838
+INFO - ncsn_runner.py - 2021-09-01 15:48:53,520 - step: 199, loss: 0.6248300075531006
+INFO - ncsn_runner.py - 2021-09-01 15:49:04,141 - step: 200, loss: 0.7979628443717957
+INFO - ncsn_runner.py - 2021-09-01 15:49:05,824 - step: 200, test_loss: 34698.265625
+INFO - ncsn_runner.py - 2021-09-01 15:49:17,238 - step: 201, loss: 0.7401946187019348
+INFO - ncsn_runner.py - 2021-09-01 15:49:26,366 - step: 202, loss: 0.696844220161438
+INFO - ncsn_runner.py - 2021-09-01 15:49:36,303 - step: 203, loss: 0.6652616262435913
+INFO - ncsn_runner.py - 2021-09-01 15:49:51,020 - step: 204, loss: 0.7689231634140015
+INFO - ncsn_runner.py - 2021-09-01 15:50:05,714 - step: 205, loss: 0.6661404371261597
+INFO - ncsn_runner.py - 2021-09-01 15:50:20,090 - step: 206, loss: 0.8257572650909424
+INFO - ncsn_runner.py - 2021-09-01 15:50:34,710 - step: 207, loss: 0.6413124799728394
+INFO - ncsn_runner.py - 2021-09-01 15:50:49,193 - step: 208, loss: 0.6922731399536133
+INFO - ncsn_runner.py - 2021-09-01 15:50:54,783 - step: 209, loss: 0.683722734451294
+INFO - ncsn_runner.py - 2021-09-01 15:51:09,663 - step: 210, loss: 0.5668110847473145
+INFO - ncsn_runner.py - 2021-09-01 15:51:22,319 - step: 211, loss: 0.5879420042037964
+INFO - ncsn_runner.py - 2021-09-01 15:51:34,446 - step: 212, loss: 0.6836752891540527
+INFO - ncsn_runner.py - 2021-09-01 15:51:41,123 - step: 213, loss: 0.6022384762763977
+INFO - ncsn_runner.py - 2021-09-01 15:51:55,795 - step: 214, loss: 0.6552569270133972
+INFO - ncsn_runner.py - 2021-09-01 15:52:06,049 - step: 215, loss: 0.6663486957550049
+INFO - ncsn_runner.py - 2021-09-01 15:52:16,725 - step: 216, loss: 0.6506422758102417
+INFO - ncsn_runner.py - 2021-09-01 15:52:31,256 - step: 217, loss: 0.6008248329162598
+INFO - ncsn_runner.py - 2021-09-01 15:52:42,285 - step: 218, loss: 0.6747092008590698
+INFO - ncsn_runner.py - 2021-09-01 15:52:54,530 - step: 219, loss: 0.6096232533454895
+INFO - ncsn_runner.py - 2021-09-01 15:53:09,012 - step: 220, loss: 0.5518132448196411
+INFO - ncsn_runner.py - 2021-09-01 15:53:21,056 - step: 221, loss: 0.6528234481811523
+INFO - ncsn_runner.py - 2021-09-01 15:53:33,854 - step: 222, loss: 0.6569534540176392
+INFO - ncsn_runner.py - 2021-09-01 15:53:44,853 - step: 223, loss: 0.6031468510627747
+INFO - ncsn_runner.py - 2021-09-01 15:53:59,225 - step: 224, loss: 0.6956342458724976
+INFO - ncsn_runner.py - 2021-09-01 15:54:13,763 - step: 225, loss: 0.643816351890564
+INFO - ncsn_runner.py - 2021-09-01 15:54:28,822 - step: 226, loss: 0.5436391830444336
+INFO - ncsn_runner.py - 2021-09-01 15:54:43,280 - step: 227, loss: 0.5227580070495605
+INFO - ncsn_runner.py - 2021-09-01 15:54:58,056 - step: 228, loss: 0.563008189201355
+INFO - ncsn_runner.py - 2021-09-01 15:55:10,292 - step: 229, loss: 0.5364059805870056
+INFO - ncsn_runner.py - 2021-09-01 15:55:22,680 - step: 230, loss: 0.5743222236633301
+INFO - ncsn_runner.py - 2021-09-01 15:55:37,250 - step: 231, loss: 0.6256699562072754
+INFO - ncsn_runner.py - 2021-09-01 15:55:51,671 - step: 232, loss: 0.6624131202697754
+INFO - ncsn_runner.py - 2021-09-01 15:56:01,915 - step: 233, loss: 0.6575435400009155
+INFO - ncsn_runner.py - 2021-09-01 15:56:16,785 - step: 234, loss: 0.5034568309783936
+INFO - ncsn_runner.py - 2021-09-01 15:56:31,355 - step: 235, loss: 0.5135399103164673
+INFO - ncsn_runner.py - 2021-09-01 15:56:45,989 - step: 236, loss: 0.586119532585144
+INFO - ncsn_runner.py - 2021-09-01 15:57:00,921 - step: 237, loss: 0.5096782445907593
+INFO - ncsn_runner.py - 2021-09-01 15:57:15,424 - step: 238, loss: 0.5183464884757996
+INFO - ncsn_runner.py - 2021-09-01 15:57:30,207 - step: 239, loss: 0.5393385887145996
+INFO - ncsn_runner.py - 2021-09-01 15:57:42,200 - step: 240, loss: 0.5988005995750427
+INFO - ncsn_runner.py - 2021-09-01 15:57:54,981 - step: 241, loss: 0.6713665723800659
+INFO - ncsn_runner.py - 2021-09-01 15:58:07,306 - step: 242, loss: 0.47522515058517456
+INFO - ncsn_runner.py - 2021-09-01 15:58:19,761 - step: 243, loss: 0.5603492259979248
+INFO - ncsn_runner.py - 2021-09-01 15:58:32,141 - step: 244, loss: 0.49068471789360046
+INFO - ncsn_runner.py - 2021-09-01 15:58:42,672 - step: 245, loss: 0.4663926959037781
+INFO - ncsn_runner.py - 2021-09-01 15:58:54,920 - step: 246, loss: 0.48463672399520874
+INFO - ncsn_runner.py - 2021-09-01 15:59:07,768 - step: 247, loss: 0.5349092483520508
+INFO - ncsn_runner.py - 2021-09-01 15:59:20,478 - step: 248, loss: 0.5586352348327637
+INFO - ncsn_runner.py - 2021-09-01 15:59:33,653 - step: 249, loss: 0.4473414421081543
+INFO - ncsn_runner.py - 2021-09-01 15:59:48,574 - step: 250, loss: 0.48348143696784973
+INFO - ncsn_runner.py - 2021-09-01 16:00:02,808 - step: 251, loss: 0.4627285897731781
+INFO - ncsn_runner.py - 2021-09-01 16:00:17,081 - step: 252, loss: 0.40468865633010864
+INFO - ncsn_runner.py - 2021-09-01 16:00:24,474 - step: 253, loss: 0.5070004463195801
+INFO - ncsn_runner.py - 2021-09-01 16:00:36,210 - step: 254, loss: 0.4695618152618408
+INFO - ncsn_runner.py - 2021-09-01 16:00:51,371 - step: 255, loss: 0.5776635408401489
+INFO - ncsn_runner.py - 2021-09-01 16:01:06,211 - step: 256, loss: 0.44193345308303833
+INFO - ncsn_runner.py - 2021-09-01 16:01:17,500 - step: 257, loss: 0.4369238018989563
+INFO - ncsn_runner.py - 2021-09-01 16:01:31,925 - step: 258, loss: 0.4656655192375183
+INFO - ncsn_runner.py - 2021-09-01 16:01:43,137 - step: 259, loss: 0.4578075408935547
+INFO - ncsn_runner.py - 2021-09-01 16:01:55,170 - step: 260, loss: 0.4509473145008087
+INFO - ncsn_runner.py - 2021-09-01 16:02:07,312 - step: 261, loss: 0.46056079864501953
+INFO - ncsn_runner.py - 2021-09-01 16:02:18,940 - step: 262, loss: 0.5175081491470337
+INFO - ncsn_runner.py - 2021-09-01 16:02:30,701 - step: 263, loss: 0.5403749942779541
+INFO - ncsn_runner.py - 2021-09-01 16:02:46,015 - step: 264, loss: 0.4846706986427307
+INFO - ncsn_runner.py - 2021-09-01 16:02:52,528 - step: 265, loss: 0.6039539575576782
+INFO - ncsn_runner.py - 2021-09-01 16:03:05,294 - step: 266, loss: 0.4649863839149475
+INFO - ncsn_runner.py - 2021-09-01 16:03:20,099 - step: 267, loss: 0.4320712685585022
+INFO - ncsn_runner.py - 2021-09-01 16:03:29,753 - step: 268, loss: 0.3988652527332306
+INFO - ncsn_runner.py - 2021-09-01 16:03:43,812 - step: 269, loss: 0.4606843888759613
+INFO - ncsn_runner.py - 2021-09-01 16:03:58,769 - step: 270, loss: 0.4043259620666504
+INFO - ncsn_runner.py - 2021-09-01 16:04:10,457 - step: 271, loss: 0.4348134696483612
+INFO - ncsn_runner.py - 2021-09-01 16:04:24,737 - step: 272, loss: 0.4250081777572632
+INFO - ncsn_runner.py - 2021-09-01 16:04:37,715 - step: 273, loss: 0.4025944471359253
+INFO - ncsn_runner.py - 2021-09-01 16:04:46,734 - step: 274, loss: 0.4501378536224365
+INFO - ncsn_runner.py - 2021-09-01 16:05:01,320 - step: 275, loss: 0.47373560070991516
+INFO - ncsn_runner.py - 2021-09-01 16:05:15,905 - step: 276, loss: 0.4607360064983368
+INFO - ncsn_runner.py - 2021-09-01 16:05:30,842 - step: 277, loss: 0.42234233021736145
+INFO - ncsn_runner.py - 2021-09-01 16:05:41,932 - step: 278, loss: 0.460766077041626
+INFO - ncsn_runner.py - 2021-09-01 16:05:54,568 - step: 279, loss: 0.4172021150588989
+INFO - ncsn_runner.py - 2021-09-01 16:06:09,720 - step: 280, loss: 0.40648984909057617
+INFO - ncsn_runner.py - 2021-09-01 16:06:24,088 - step: 281, loss: 0.4365021586418152
+INFO - ncsn_runner.py - 2021-09-01 16:06:34,353 - step: 282, loss: 0.4036480784416199
+INFO - ncsn_runner.py - 2021-09-01 16:06:47,212 - step: 283, loss: 0.34478431940078735
+INFO - ncsn_runner.py - 2021-09-01 16:07:01,746 - step: 284, loss: 0.34946465492248535
+INFO - ncsn_runner.py - 2021-09-01 16:07:16,304 - step: 285, loss: 0.41272854804992676
+INFO - ncsn_runner.py - 2021-09-01 16:07:28,960 - step: 286, loss: 0.4175616204738617
+INFO - ncsn_runner.py - 2021-09-01 16:07:44,495 - step: 287, loss: 0.4620286524295807
+INFO - ncsn_runner.py - 2021-09-01 16:07:56,589 - step: 288, loss: 0.39957955479621887
+INFO - ncsn_runner.py - 2021-09-01 16:08:09,497 - step: 289, loss: 0.4321849048137665
+INFO - ncsn_runner.py - 2021-09-01 16:08:21,832 - step: 290, loss: 0.4236784875392914
+INFO - ncsn_runner.py - 2021-09-01 16:08:30,252 - step: 291, loss: 0.3982834219932556
+INFO - ncsn_runner.py - 2021-09-01 16:08:44,595 - step: 292, loss: 0.3269048035144806
+INFO - ncsn_runner.py - 2021-09-01 16:08:54,210 - step: 293, loss: 0.3683346211910248
+INFO - ncsn_runner.py - 2021-09-01 16:09:09,078 - step: 294, loss: 0.37798088788986206
+INFO - ncsn_runner.py - 2021-09-01 16:09:23,787 - step: 295, loss: 0.3617423176765442
+INFO - ncsn_runner.py - 2021-09-01 16:09:31,068 - step: 296, loss: 0.40677040815353394
+INFO - ncsn_runner.py - 2021-09-01 16:09:40,917 - step: 297, loss: 0.3758963942527771
+INFO - ncsn_runner.py - 2021-09-01 16:09:52,511 - step: 298, loss: 0.37522655725479126
+INFO - ncsn_runner.py - 2021-09-01 16:10:02,854 - step: 299, loss: 0.39332085847854614
+INFO - ncsn_runner.py - 2021-09-01 16:10:17,561 - step: 300, loss: 0.3920057415962219
+INFO - ncsn_runner.py - 2021-09-01 16:10:19,233 - step: 300, test_loss: 31786.9921875
+INFO - ncsn_runner.py - 2021-09-01 16:10:29,604 - step: 301, loss: 0.3262534737586975
+INFO - ncsn_runner.py - 2021-09-01 16:10:41,268 - step: 302, loss: 0.46486014127731323
+INFO - ncsn_runner.py - 2021-09-01 16:10:55,676 - step: 303, loss: 0.3862209916114807
+INFO - ncsn_runner.py - 2021-09-01 16:11:10,328 - step: 304, loss: 0.4013102948665619
+INFO - ncsn_runner.py - 2021-09-01 16:11:22,448 - step: 305, loss: 0.3847796618938446
+INFO - ncsn_runner.py - 2021-09-01 16:11:34,785 - step: 306, loss: 0.4021012783050537
+INFO - ncsn_runner.py - 2021-09-01 16:11:47,698 - step: 307, loss: 0.36638137698173523
+INFO - ncsn_runner.py - 2021-09-01 16:11:57,763 - step: 308, loss: 0.30387696623802185
+INFO - ncsn_runner.py - 2021-09-01 16:12:08,000 - step: 309, loss: 0.36662954092025757
+INFO - ncsn_runner.py - 2021-09-01 16:12:18,035 - step: 310, loss: 0.3898923397064209
+INFO - ncsn_runner.py - 2021-09-01 16:12:32,875 - step: 311, loss: 0.3131802976131439
+INFO - ncsn_runner.py - 2021-09-01 16:12:45,313 - step: 312, loss: 0.32460281252861023
+INFO - ncsn_runner.py - 2021-09-01 16:12:57,483 - step: 313, loss: 0.33606529235839844
+INFO - ncsn_runner.py - 2021-09-01 16:13:11,888 - step: 314, loss: 0.3256557285785675
+INFO - ncsn_runner.py - 2021-09-01 16:13:26,804 - step: 315, loss: 0.33937832713127136
+INFO - ncsn_runner.py - 2021-09-01 16:13:41,331 - step: 316, loss: 0.325436532497406
+INFO - ncsn_runner.py - 2021-09-01 16:13:55,390 - step: 317, loss: 0.3939259946346283
+INFO - ncsn_runner.py - 2021-09-01 16:14:04,638 - step: 318, loss: 0.4260929822921753
+INFO - ncsn_runner.py - 2021-09-01 16:14:12,803 - step: 319, loss: 0.3945002555847168
+INFO - ncsn_runner.py - 2021-09-01 16:14:27,009 - step: 320, loss: 0.35552340745925903
+INFO - ncsn_runner.py - 2021-09-01 16:14:37,481 - step: 321, loss: 0.3512561321258545
+INFO - ncsn_runner.py - 2021-09-01 16:14:49,766 - step: 322, loss: 0.34204965829849243
+INFO - ncsn_runner.py - 2021-09-01 16:14:59,603 - step: 323, loss: 0.34475308656692505
+INFO - ncsn_runner.py - 2021-09-01 16:15:14,304 - step: 324, loss: 0.3622746467590332
+INFO - ncsn_runner.py - 2021-09-01 16:15:29,254 - step: 325, loss: 0.361508309841156
+INFO - ncsn_runner.py - 2021-09-01 16:15:43,830 - step: 326, loss: 0.302011102437973
+INFO - ncsn_runner.py - 2021-09-01 16:15:55,886 - step: 327, loss: 0.39388951659202576
