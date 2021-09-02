@@ -234,7 +234,16 @@ class NCSNRunner():
                                                     self.config.data.image_size, self.config.data.image_size,
                                                     device=self.config.device)
                             init_samples = data_transform(self.config, init_samples)
+                        
+                        #Save the initial samples!
+                        if self.config.data.dataset == 'RTM_N':
+                            sample = inverse_data_transform(self.config, init_samples)
 
+                            image_grid = make_grid(sample, 6)
+                            save_image(image_grid,
+                                       os.path.join(self.args.log_sample_path, 'init_image_grid{}.png'.format(step)))
+
+                        #grab the final samples and save them
                         all_samples = anneal_Langevin_dynamics(init_samples, test_score, sigmas.cpu().numpy(),
                                                             self.config.sampling.n_steps_each,
                                                             self.config.sampling.step_lr,
@@ -247,7 +256,7 @@ class NCSNRunner():
 
                         sample = inverse_data_transform(self.config, sample)
 
-                        #MY ADDITION: SAVE THE ACTUAL RAW SAMPLES AS NUMPY ARRAYS
+                        #SAVE THE ACTUAL RAW FINAL SAMPLES AS NUMPY ARRAYS
                         np.save(os.path.join(self.args.log_sample_path, 'samples_{}.npy'.format(step)), sample.cpu().numpy())
 
                         image_grid = make_grid(sample, 6)
