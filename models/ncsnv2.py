@@ -265,6 +265,39 @@ class NCSNv2Deepest(nn.Module):
         for m in module:
             x = m(x)
         return x
+    
+    def set_sigmas(self, sigmas):
+        self.sigmas = torch.squeeze(sigmas).type_as(self.sigmas)
+    
+    def forward_with_sigmas(self, x, sigmas):
+        if not self.logit_transform and not self.rescaled:
+            h = 2 * x - 1.
+        else:
+            h = x
+
+        output = self.begin_conv(h)
+
+        layer1 = self._compute_cond_module(self.res1, output)
+        layer2 = self._compute_cond_module(self.res2, layer1)
+        layer3 = self._compute_cond_module(self.res3, layer2)
+        layer31 = self._compute_cond_module(self.res31, layer3)
+        layer4 = self._compute_cond_module(self.res4, layer31)
+        layer5 = self._compute_cond_module(self.res5, layer4)
+
+        ref1 = self.refine1([layer5], layer5.shape[2:])
+        ref2 = self.refine2([layer4, ref1], layer4.shape[2:])
+        ref31 = self.refine31([layer31, ref2], layer31.shape[2:])
+        ref3 = self.refine3([layer3, ref31], layer3.shape[2:])
+        ref4 = self.refine4([layer2, ref3], layer2.shape[2:])
+        output = self.refine5([layer1, ref4], layer1.shape[2:])
+
+        output = self.normalizer(output)
+        output = self.act(output)
+        output = self.end_conv(output)
+
+        output = output / sigmas
+
+        return output
 
     def forward(self, x, y):
         if not self.logit_transform and not self.rescaled:

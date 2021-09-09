@@ -85,6 +85,11 @@ class NCSNRunner():
         if self.config.data.dataset == 'RTM_N':
             n_shots = np.asarray(self.config.model.n_shots).squeeze()
             n_shots = torch.from_numpy(n_shots).float().to(self.config.device)
+            
+            #If we are dyamically altering lambdas, start a count of each n_shot encountered in training and a running sum of MSEs for each n_shot
+            if self.config.model.sigma_dist == 'rtm_dynamic':
+                total_n_shots_count = torch.zeros(len(n_shots)).float().to(self.config.device) 
+                sigmas_running = get_sigmas(self.config)
 
         if self.config.training.log_all_sigmas:
             ### Commented out training time logging to save time.
@@ -132,12 +137,20 @@ class NCSNRunner():
                 X = X.to(self.config.device)
                 X = data_transform(self.config, X)
 
-                if self.config.data.dataset == 'RTM_N':
-                    loss = rtm_score_estimation(score, (X, y), n_shots, sigmas, dataset, None, hook)
+                if self.config.model.sigma_dist == 'rtm':
+                    loss = rtm_score_estimation(score, (X, y), n_shots, sigmas, dataset, 
+                                                dynamic_lambdas=False, labels=None, hook=hook)
+                elif self.config.model.sigma_dist == 'rtm_dynamic':
+                    loss, sum_mses_list, n_shots_count = rtm_score_estimation(score, (X, y), n_shots, sigmas, dataset, 
+                                                                                dynamic_lambdas=True, labels=None, hook=hook)
+                    #update the running sum of lambdas/MSEs and counts of each n_shots
+                    total_n_shots_count = total_n_shots_count + n_shots_count 
+                    sigmas_running = sigmas_running + sum_mses_list
                 else:
                     loss = anneal_dsm_score_estimation(score, X, sigmas, None,
                                                     self.config.training.anneal_power,
                                                     hook)
+                                                    
                 tb_logger.add_scalar('loss', loss, global_step=step)
                 tb_hook()
 
@@ -183,6 +196,11 @@ class NCSNRunner():
 
                 #every snapshot_freq iterations, save the weights and sample if desired
                 if step % self.config.training.snapshot_freq == 0:
+                    if self.config.model.sigma_dist == 'rtm_dynamic':
+                        sigmas = sigmas_running / total_n_shots_count #update the master sigmas list
+                        score.set_sigmas(sigmas)
+                        np.save(os.path.join(self.args.log_sample_path, 'lambdas_{}.npy'.format(step)), sigmas.cpu().numpy())
+
                     states = [
                         score.state_dict(),
                         optimizer.state_dict(),
@@ -217,15 +235,34 @@ class NCSNRunner():
                                                             self.config.data.image_size, 
                                                             device=self.config.device)
 
+                            #holds the rtm_243 ground truth images for saving/checkpointing                                
+                            rtm_243_samples = torch.zeros(36, self.config.data.channels, self.config.data.image_size, 
+                                                            self.config.data.image_size, 
+                                                            device=self.config.device)
+
                             #(2) grab the random 36 samples from the test set
                             for i in range(36):
                                 X, y = test_dataset[random_idxs[i]]
+                                rtm_243_samples[i] = X
                                 X = X.to(self.config.device)
                                 X = data_transform(self.config, X)
 
                                 next_init_sample = test_dataset.dataset.grab_rtm_image((X, [y]), n_shots[0].item()*torch.ones(1)) #dimension of ones is hacky fix
 
                                 init_samples[i] = next_init_sample
+                            
+                            #save the initial and ground truth images
+                            image_grid = make_grid(init_samples, 6)
+                            save_image(image_grid,
+                                       os.path.join(self.args.log_sample_path, 'init_image_grid{}.png'.format(step)))
+                            np.save(os.path.join(self.args.log_sample_path, 'init_image_grid{}.npy'.format(step)), init_samples.cpu().numpy())
+                            
+                            image_grid = make_grid(rtm_243_samples, 6)
+                            save_image(image_grid,
+                                       os.path.join(self.args.log_sample_path, 'rtm243_ground_truth_image_grid{}.png'.format(step)))
+                            np.save(os.path.join(self.args.log_sample_path, 'rtm243_ground_truth_image_grid{}.npy'.format(step)), rtm_243_samples.cpu().numpy())
+                            
+                            del rtm_243_samples
                         
                         else:
                             init_samples = torch.rand(36, self.config.data.channels,
@@ -233,14 +270,6 @@ class NCSNRunner():
                                                     device=self.config.device)
                         
                         init_samples = data_transform(self.config, init_samples)
-                        
-                        #Save the initial samples!
-                        if self.config.data.dataset == 'RTM_N':
-                            sample = inverse_data_transform(self.config, init_samples)
-
-                            image_grid = make_grid(sample, 6)
-                            save_image(image_grid,
-                                       os.path.join(self.args.log_sample_path, 'init_image_grid{}.png'.format(step)))
 
                         #grab the final samples and save them
                         all_samples = anneal_Langevin_dynamics(init_samples, test_score, sigmas.cpu().numpy(),
@@ -250,8 +279,8 @@ class NCSNRunner():
                                                             denoise=self.config.sampling.denoise)
 
                         sample = all_samples[-1].view(all_samples[-1].shape[0], self.config.data.channels,
-                                                      self.config.data.image_size,
-                                                      self.config.data.image_size)
+                                                        self.config.data.image_size,
+                                                        self.config.data.image_size)
 
                         sample = inverse_data_transform(self.config, sample)
 
@@ -260,9 +289,9 @@ class NCSNRunner():
 
                         image_grid = make_grid(sample, 6)
                         save_image(image_grid,
-                                   os.path.join(self.args.log_sample_path, 'image_grid_{}.png'.format(step)))
-                        torch.save(sample, os.path.join(self.args.log_sample_path, 'samples_{}.pth'.format(step)))
-
+                                    os.path.join(self.args.log_sample_path, 'image_grid_{}.png'.format(step)))
+                        #torch.save(sample, os.path.join(self.args.log_sample_path, 'samples_{}.pth'.format(step)))
+                            
                         del test_score
                         del all_samples
 

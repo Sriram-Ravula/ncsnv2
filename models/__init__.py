@@ -13,7 +13,7 @@ def get_sigmas(config):
     
     #ADDITION FOR RTM_N IMAGES
     #GRAB THE LIST lambda[n_shots_i] 
-    elif config.model.sigma_dist == 'rtm':
+    elif config.model.sigma_dist == 'rtm' or config.model.sigma_dist == 'rtm_dynamic':
         lambda_temp = np.asarray(config.model.lambdas_list).squeeze()
         sigmas = torch.from_numpy(lambda_temp).float().to(config.device)
 
