@@ -75,9 +75,9 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, 
     #(6) grab the network output
     #scores = [N, C, H, W]
     if dynamic_lambdas:
-        scores = scorenet.forward_with_sigmas(perturbed_samples, lambda_n)
+        scores = scorenet(perturbed_samples, labels, lambda_n)
     else:
-        scores = scorenet(perturbed_samples, labels) #s_theta(x~, lambda_i) / lambda(n_shots_i)
+        scores = scorenet(perturbed_samples, labels, None) #s_theta(x~, lambda_i) / lambda(n_shots_i)
     scores = scores.view(scores.shape[0], -1)
 
     #(7) calculate the loss
