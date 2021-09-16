@@ -85,10 +85,13 @@ class NCSNRunner():
         if self.config.data.dataset == 'RTM_N':
             n_shots = np.asarray(self.config.model.n_shots).squeeze()
             n_shots = torch.from_numpy(n_shots).float().to(self.config.device)
+            #make sure it has dimension > 0 if it is a singleton (useful for indexing)
+            if n_shots.numel() == 0:
+                n_shots = torch.unsqueeze(n_shots, 0)
             
             #If we are dyamically altering lambdas, start a count of each n_shot encountered in training and a running sum of MSEs for each n_shot
             if self.config.model.sigma_dist == 'rtm_dynamic':
-                total_n_shots_count = torch.zeros(len(n_shots)).float().to(self.config.device) 
+                total_n_shots_count = torch.zeros(n_shots.numel()).float().to(self.config.device) 
                 sigmas_running = get_sigmas(self.config)
 
         if self.config.training.log_all_sigmas:
@@ -198,7 +201,7 @@ class NCSNRunner():
                 if step % self.config.training.snapshot_freq == 0:
                     if self.config.model.sigma_dist == 'rtm_dynamic':
                         sigmas = sigmas_running / total_n_shots_count #update the master sigmas list
-                        score.set_sigmas(sigmas)
+                        score.module.set_sigmas(sigmas)
                         np.save(os.path.join(self.args.log_sample_path, 'lambdas_{}.npy'.format(step)), sigmas.cpu().numpy())
 
                     states = [

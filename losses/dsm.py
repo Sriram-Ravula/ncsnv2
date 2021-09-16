@@ -17,23 +17,28 @@ def anneal_dsm_score_estimation(scorenet, samples, sigmas, labels=None, anneal_p
         hook(loss, labels)
 
     return loss.mean(dim=0)
-"""
-Args:
-    scorenet: s_{theta} the score-based network
-    samples: (X, y) pairs where y is for identifying the RTM image index! [N, C, H, W]
-    n_shots: the list of n_shots_i that we are using (e.g. [1, 2, 5, 10, 50, 100]). [nshots]
-    lambdas_list: the list of lambda(n_shots_i) values to scale the loss by. [nshots]
-    dynamic_lambdas: whether or not we want to calclate lambda as the MSE between rtm_243 and rtm_n during runtime
-    labels: the index of the n_shots we are using for each pixel - i.e. i in n_shots_i. [N].
-    hook: a hook for experiment logging
-"""
+
 def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, dynamic_lambdas=False, labels=None, hook=None):
+    """
+    Args:
+        scorenet: s_{theta} the score-based network
+        samples: (X, y) pairs where y is for identifying the RTM image index! [N, C, H, W]
+        n_shots: the list of n_shots_i that we are using (e.g. [1, 2, 5, 10, 50, 100]). [nshots]
+        lambdas_list: the list of lambda(n_shots_i) values to scale the loss by. [nshots]
+        rtm_dataset: the dataset to use when gathering the RTM_n images corresponding to the input
+        dynamic_lambdas: whether or not we want to calclate lambda as the MSE between rtm_243 and rtm_n during runtime
+        labels: the index of the n_shots we are using for each pixel - i.e. i in n_shots_i. [N].
+        hook: a hook for experiment logging
+    """
+    
     #(1) if we aren't given an index i for n_shots, pick a random one
     #labels has size [N] - same as samples[0]
     if labels is None: 
-        labels = torch.randint(0, len(n_shots), (samples[0].shape[0],), device=samples[0].device)
+        labels = torch.randint(0, n_shots.numel(), (samples[0].shape[0],), device=samples[0].device)
     
     n_shots = torch.tensor(n_shots)
+    #TODO Delete this debugging line
+    print(n_shots.size())
     lambdas_list = torch.tensor(lambdas_list)
 
     #(2) grab the n_shots_i (e.g. 180 shots)
@@ -60,8 +65,8 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, 
         #we want a list of length [nshots] with each entry having the sum of all MSEs in this iteration corresponding to that n_shot_i
         #we also want a list of length [nshots] where we count the number of times we encounter each n_shot_i value
 
-        sum_mses_list = torch.zeros(len(n_shots)).float().to(samples[0].device)
-        n_shots_count = torch.zeros(len(n_shots)).float().to(samples[0].device)
+        sum_mses_list = torch.zeros(n_shots.numel()).float().to(samples[0].device)
+        n_shots_count = torch.zeros(n_shots.numel()).float().to(samples[0].device)
 
         for i, shot_idx in enumerate(labels.cpu().numpy().squeeze()):
             sum_mses_list[shot_idx] = sum_mses_list[shot_idx] + lambda_n[i].item()
