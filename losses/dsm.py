@@ -35,11 +35,6 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, 
     #labels has size [N] - same as samples[0]
     if labels is None: 
         labels = torch.randint(0, n_shots.numel(), (samples[0].shape[0],), device=samples[0].device)
-    
-    n_shots = torch.tensor(n_shots)
-    #TODO Delete this debugging line
-    print(n_shots.size())
-    lambdas_list = torch.tensor(lambdas_list)
 
     #(2) grab the n_shots_i (e.g. 180 shots)
     #used_nshots has size [N]

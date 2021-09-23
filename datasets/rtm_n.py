@@ -48,7 +48,7 @@ class RTM_N(TensorDataset):
                         self.W, self.H = load_exp(slice_path)['vel'].shape #shape is transposed of how it should be viewed
 
         #TODO: Remove this debugging line
-        #self.slices = self.slices[0:100]
+        #self.slices = self.slices[0:1000]
 
         #[N, 1, H, W] set of filtered and pre-processed RTM243 images in [0, 1]
         #same order as self.slices - use this fact to index and match n_shots

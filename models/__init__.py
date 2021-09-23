@@ -16,6 +16,9 @@ def get_sigmas(config):
     elif config.model.sigma_dist == 'rtm' or config.model.sigma_dist == 'rtm_dynamic':
         lambda_temp = np.asarray(config.model.lambdas_list).squeeze()
         sigmas = torch.from_numpy(lambda_temp).float().to(config.device)
+        #make sure it has dimension > 0 if it is a singleton (useful for indexing)
+        if sigmas.numel() == 1:
+            sigmas = torch.unsqueeze(sigmas, 0)
 
     else:
         raise NotImplementedError('sigma distribution not supported')

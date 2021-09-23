@@ -268,6 +268,9 @@ class NCSNv2Deepest(nn.Module):
     
     def set_sigmas(self, sigmas):
         self.sigmas = torch.squeeze(sigmas).type_as(self.sigmas)
+        #make sure it has dimension > 0 if it is a singleton (useful for indexing)
+        if self.sigmas.numel() == 1:
+            self.sigmas = torch.unsqueeze(self.sigmas, 0)
 
     def forward(self, x, y, sigmas=None):
         if not self.logit_transform and not self.rescaled:

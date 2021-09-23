@@ -86,7 +86,7 @@ class NCSNRunner():
             n_shots = np.asarray(self.config.model.n_shots).squeeze()
             n_shots = torch.from_numpy(n_shots).float().to(self.config.device)
             #make sure it has dimension > 0 if it is a singleton (useful for indexing)
-            if n_shots.numel() == 0:
+            if n_shots.numel() == 1:
                 n_shots = torch.unsqueeze(n_shots, 0)
             
             #If we are dyamically altering lambdas, start a count of each n_shot encountered in training and a running sum of MSEs for each n_shot

@@ -11,7 +11,7 @@ sampling:
   batch_size: 36  #number of samples to produce for sampling
   data_init: false
   step_lr: 0.0000016  #epsilon - step size for sampling during Langevin Dynamics
-  n_steps_each: 500 #T - number of inner loop steps
+  n_steps_each: 150 #T - number of inner loop steps
   ckpt_id: 80000  
   final_only: true
   fid: false
@@ -55,7 +55,7 @@ model:
   sigma_dist: rtm_dynamic #the progression of the sigma values
   num_classes: 1
   n_shots: [5]
-  lambdas_list: [0.2]
+  lambdas_list: [0.115]
   normalization: InstanceNorm++
   nonlinearity: elu
   ngf: 128
