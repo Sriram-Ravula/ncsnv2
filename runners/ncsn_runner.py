@@ -237,6 +237,8 @@ class NCSNRunner():
                             init_samples = torch.zeros(36, self.config.data.channels, self.config.data.image_size, 
                                                             self.config.data.image_size, 
                                                             device=self.config.device)
+                            
+                            sample_indices = []
 
                             #holds the rtm_243 ground truth images for saving/checkpointing                                
                             rtm_243_samples = torch.zeros(36, self.config.data.channels, self.config.data.image_size, 
@@ -246,6 +248,7 @@ class NCSNRunner():
                             #(2) grab the random 36 samples from the test set
                             for i in range(36):
                                 X, y = test_dataset[random_idxs[i]]
+                                sample_indices.append(y)
                                 rtm_243_samples[i] = X
                                 X = X.to(self.config.device)
                                 X = data_transform(self.config, X)
@@ -254,7 +257,10 @@ class NCSNRunner():
 
                                 init_samples[i] = next_init_sample
                             
-                            #save the initial and ground truth images
+                            #save the sample indices for bookkeeping, and initial and ground truth images
+                            sample_indices = np.array(sample_indices)
+                            np.save(os.path.join(self.args.log_sample_path, 'sample_indices{}.npy'.format(step)), sample_indices)
+
                             image_grid = make_grid(init_samples, 6)
                             save_image(image_grid,
                                        os.path.join(self.args.log_sample_path, 'init_image_grid{}.png'.format(step)))
