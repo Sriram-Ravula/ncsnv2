@@ -267,8 +267,10 @@ class NCSNv2Deepest(nn.Module):
         return x
     
     def set_sigmas(self, sigmas):
-        self.sigmas = torch.squeeze(sigmas).type_as(self.sigmas)
-        #make sure it has dimension > 0 if it is a singleton (useful for indexing)
+        self.sigmas = torch.squeeze(sigmas).type_as(self.sigmas).to(self.sigmas.device)
+
+        #make sure it has dimension > 0 if it is a singleton
+        #we want to have a 1D tensor for indexing  
         if self.sigmas.numel() == 1:
             self.sigmas = torch.unsqueeze(self.sigmas, 0)
 
@@ -298,6 +300,8 @@ class NCSNv2Deepest(nn.Module):
         output = self.act(output)
         output = self.end_conv(output)
 
+        #We have the option to have a fixed set of sigmas for normal operation
+        #Or a variable set of sigmas that we pass in to the forward function for dynamic operation (e.g. RTM_N)
         if sigmas is None:
             used_sigmas = self.sigmas[y].view(x.shape[0], *([1] * len(x.shape[1:])))
         else:
