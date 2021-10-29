@@ -22,13 +22,13 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, 
     """
     Args:
         scorenet: s_{theta} the score-based network
-        samples: (X, y) pairs where y is for identifying the RTM image index! [N, C, H, W]
-        n_shots: the list of n_shots_i that we are using (e.g. [1, 2, 5, 10, 50, 100]). [nshots]
-        lambdas_list: the list of lambda(n_shots_i) values to scale the loss by. [nshots]
-        rtm_dataset: the dataset to use when gathering the RTM_n images corresponding to the input
-        dynamic_lambdas: whether or not we want to calclate lambda as the MSE between rtm_243 and rtm_n during runtime
-        labels: the index of the n_shots we are using for each pixel - i.e. i in n_shots_i. [N].
-        hook: a hook for experiment logging
+        samples: (X, y) pairs where y is for identifying the RTM image index. (Tensor:[N, C, H, W], list:[N]).
+        n_shots: The list of n_shots_i that we are using (e.g. [1, 2, 5, 10, 50, 100]). Torch tensor [nshots].
+        lambdas_list: The list of lambda(n_shots_i) values to scale the loss by. Torch Tensor [nshots].
+        rtm_dataset: The dataset to use when gathering the RTM_n images corresponding to the input.
+        dynamic_lambdas: Whether or not we want to calclate lambda as the RMSE between rtm_243 and rtm_n during runtime.
+        labels: The index of the n_shots we are using for each pixel - i.e. i in n_shots_i. Torch tensor [N].
+        hook: A hook for experiment logging.
     """
     
     #(1) if we aren't given an index i for n_shots, pick a random one
@@ -40,21 +40,22 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, 
     #used_nshots has size [N]
     used_nshots = n_shots[labels].view(samples[0].shape[0], *([1] * len(samples[0].shape[1:]))) 
 
-    #(3) grab the correct lambda(n_shots_i) val
+    #(3) grab the correct lambda(n_shots_i) val (this value will be replaced with empirical value if dynamic_lambdas=True)
     #lambda_n has size [N]
     lambda_n = lambdas_list[labels].view(samples[0].shape[0], *([1] * len(samples[0].shape[1:])))
 
     #(4) grab the n_shots images corresponding to the rtm243 images we have as training samples
     #we pass the RTM_243 image with its index and the n_shots_i to the function and get back the RTM_{n_shots_i} image
-    #preturbed_samples = [N, C, H, W]
+    #preturbed_samples has size [N, C, H, W]
     perturbed_samples = rtm_dataset.dataset.grab_rtm_image(samples, used_nshots) #x_{n_shots_i}
 
     #(5) form the targets 
-    #targets = [N, C, H, W]
+    #targets has siz [N, C, H, W]
     target = samples[0] - perturbed_samples #(x_243 - x_{n_shots_i})
 
     if dynamic_lambdas:
-        lambda_n =  torch.sqrt(torch.mean(target ** 2, dim=[1, 2, 3])) #this gives us sqrt((1 / H*W*C) ||x_243 - x_N||_2^2), i.e. the RMSE per sample
+        #this gives us sqrt((1 / H*W*C) ||x_243 - x_N||_2^2), i.e. the RMSE per sample
+        lambda_n =  torch.sqrt(torch.mean(target ** 2, dim=[1, 2, 3])) 
 
         #now we want to keep a running average of the lambda values for each of the n_shot_i values
         #we want a list of length [nshots] with each entry having the sum of all MSEs in this iteration corresponding to that n_shot_i
@@ -72,12 +73,13 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, 
     target = target / (lambda_n ** 2) #TODO this is an addition to try out
     target = target.view(target.shape[0], -1)
 
-    #(6) grab the network output
+    #(6) grab the network output s_theta(x~, lambda_i) / lambda(n_shots_i)
     #scores = [N, C, H, W]
     if dynamic_lambdas:
+        #if dynamic, pass the measured lambda values to the score network to scale it
         scores = scorenet(perturbed_samples, labels, lambda_n)
     else:
-        scores = scorenet(perturbed_samples, labels, None) #s_theta(x~, lambda_i) / lambda(n_shots_i)
+        scores = scorenet(perturbed_samples, labels, None) 
     scores = scores.view(scores.shape[0], -1)
 
     #(7) calculate the loss

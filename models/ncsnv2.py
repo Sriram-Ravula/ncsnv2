@@ -267,6 +267,12 @@ class NCSNv2Deepest(nn.Module):
         return x
     
     def set_sigmas(self, sigmas):
+        """
+        Function to set the values of sigma for this model in case they change during training/inference.
+
+        Parameters:
+            sigmas: The new list of sigmas to use. Torch tensor with shape [num_noise_levels].
+        """
         self.sigmas = torch.squeeze(sigmas).type_as(self.sigmas).to(self.sigmas.device)
 
         #make sure it has dimension > 0 if it is a singleton
@@ -301,7 +307,8 @@ class NCSNv2Deepest(nn.Module):
         output = self.end_conv(output)
 
         #We have the option to have a fixed set of sigmas for normal operation
-        #Or a variable set of sigmas that we pass in to the forward function for dynamic operation (e.g. RTM_N)
+        #Or a variable set of sigmas that we pass in to the forward function for dynamic operation (e.g. RTM_N dynamic)
+        #Sigmas is a Torch tensor with shape [num_noise_levels]
         if sigmas is None:
             used_sigmas = self.sigmas[y].view(x.shape[0], *([1] * len(x.shape[1:])))
         else:

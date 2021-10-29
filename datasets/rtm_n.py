@@ -14,7 +14,7 @@ class RTM_N(TensorDataset):
     A dataset class for RTM_n images.
     Looks at a folder of RTM images and:
         - enumerates the list of their indices
-        - it preprocesses returns the RTM_243 images (already hardcoded and saved) 
+        - it preprocesses stores the RTM_243 images (already hardcoded and saved) 
         - 
         - preprocesses the images to stitch together "n-shots" when loaded at train time
     """
@@ -120,9 +120,11 @@ class RTM_N(TensorDataset):
     def grab_rtm_image(self, input_sample, n_shots):
         """
         Given an image index and number of shots per image, gather and preprocess an RTM_n image.
+
         Args:
             input_sample: (X, y) pair of rtm_243 image and its index. (tensor:[N, 1, H, W], list:[N])
             n_shots: the number of shots we want to select for each rtm_n image corresponding to the input. list:[N]
+            
         Returns:
             rtm_n_img: a tensor with same dimensions as X comprising rtm_n images. tensor:[N, 1, H, W]
         """

@@ -2,21 +2,34 @@ import torch
 import numpy as np
 
 def get_sigmas(config):
+    """
+    Returns the list of sigmas (i.e. noise levels) used for a dataset.
+
+    Parameters:
+        config: The config file for the experiment. 
+                Specifies a 'config.model.sigma_dist' with value in ['geometric', 'uniform', 'rtm', 'rtm_dynamic'].
+                If 'rtm' or 'rtm_dynamic' then must also specify a 'config.model.lambdas_list' with the list noise level values. 
+    
+    Returns:
+        sigmas: The list of sigmas (i.e. noise levels) used for a dataset.
+                In the case of 'rtm' or 'rtm_dynamic' these correspond to lambda (i.e. RMSE between RTM_n and RTM_243).
+                Torch floating-point tensor on specific device with shape [L = n_shots = num_noise_levels].    
+    """
     if config.model.sigma_dist == 'geometric':
         sigmas = torch.tensor(
             np.exp(np.linspace(np.log(config.model.sigma_begin), np.log(config.model.sigma_end),
                                config.model.num_classes))).float().to(config.device)
+
     elif config.model.sigma_dist == 'uniform':
         sigmas = torch.tensor(
             np.linspace(config.model.sigma_begin, config.model.sigma_end, config.model.num_classes)
         ).float().to(config.device)
     
-    #ADDITION FOR RTM_N IMAGES
-    #GRAB THE LIST lambda[n_shots_i] 
     elif config.model.sigma_dist == 'rtm' or config.model.sigma_dist == 'rtm_dynamic':
         lambda_temp = np.asarray(config.model.lambdas_list).squeeze()
         sigmas = torch.from_numpy(lambda_temp).float().to(config.device)
-        #make sure it has dimension > 0 if it is a singleton (useful for indexing)
+
+        #make sure the tensor has dimension > 0 if it is a singleton (useful for indexing)
         if sigmas.numel() == 1:
             sigmas = torch.unsqueeze(sigmas, 0)
 
@@ -28,13 +41,35 @@ def get_sigmas(config):
 @torch.no_grad()
 def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=0.000008,
                              final_only=False, verbose=False, denoise=True, add_noise=True):
+    """
+    Performs annealed stochastic gradient Langevin dynamics algorithm.
+
+    Parameters:
+        x_mod: The starting iterate variable. Torch tensor with shape [N, C, H, W].
+        scorenet: The score-based generative model to use in SGLD.
+        sigmas: The list of noise levels to use for scaling and input to scorenet. 
+                Torch tensor with shape [L = n_shots = num_noise_levels].
+        n_steps_each: Number of SGLD steps per noise level - i.e. T in annealed SGLD algo. 
+        step_lr: Epsilon in SGLD algorithm. Used to scale step size.
+        final_only: If True, only returns output of last iteration. 
+                    If False, returns list with output from every iteration
+        verbose: If True, output gradient and image statistics at every iteration.
+        denoise: If True, performs a denoising step at the output of the last iteration.
+        add_noise: If True, adds a stochastic noise to each step (i.e. samples rather than doing MAP)
+    
+    Returns:
+        images: A list of containing the output from the last iteration only, if final_only=True, or all iterations otherwise
+    """
     images = []
 
     with torch.no_grad():
         for c, sigma in enumerate(sigmas):
-            labels = torch.ones(x_mod.shape[0], device=x_mod.device) * c #dummy target 1...T depending on iteration
+            #create the input to NCSN that tells it which noise level we are on
+            labels = torch.ones(x_mod.shape[0], device=x_mod.device) * c 
             labels = labels.long()
+
             step_size = step_lr * (sigma / sigmas[-1]) ** 2
+
             for s in range(n_steps_each):
                 grad = scorenet(x_mod, labels)
 
@@ -44,13 +79,12 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
                 else:
                     noise = torch.zeros_like(x_mod)
 
-                #calculate l2 norms of gradient (score) and the additive noise for logging
+                #Langevin update step
+                x_mod = x_mod + step_size*grad + np.sqrt(step_size * 2)*noise   
+
+                #calculate l2 norms of gradient (score)m additive noise, and image for logging
                 grad_norm = torch.norm(grad.view(grad.shape[0], -1), dim=-1).mean()
                 noise_norm = torch.norm(noise.view(noise.shape[0], -1), dim=-1).mean()
-
-                x_mod = x_mod + step_size * grad + noise * np.sqrt(step_size * 2) #core Langevin step
-
-                #calc l2 norm of iterate variable for logging
                 image_norm = torch.norm(x_mod.view(x_mod.shape[0], -1), dim=-1).mean()
 
                 #calc snr as scaled version of [||s(x, \sigma_i)|| / ||z_t||] and mean of score for logging
@@ -59,11 +93,11 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
 
                 if not final_only:
                     images.append(x_mod.to('cpu'))
+
                 if verbose:
-                    print("level: {}, step_size: {}, grad_norm: {}, image_norm: {}, snr: {}, grad_mean_norm: {}".format(
+                    print("level: {}, step_size: {:.3f}, grad_norm: {:.3f}, image_norm: {:.3f}, snr: {:.3f}, grad_mean_norm: {:.3f}".format(
                         c, step_size, grad_norm.item(), image_norm.item(), snr.item(), grad_mean_norm.item()))
 
-        #final denoising step if desired - removes the very last additive z_L 
         if denoise:
             last_noise = (len(sigmas) - 1) * torch.ones(x_mod.shape[0], device=x_mod.device)
             last_noise = last_noise.long()
