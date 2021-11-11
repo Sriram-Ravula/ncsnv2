@@ -69,14 +69,34 @@ class NCSNRunner():
         if self.args.resume_training:
             print("\n\nRESUMING TRAINING - LOADING SAVED WEIGHTS\n\n")
             states = torch.load(os.path.join(self.args.log_path, 'checkpoint.pth'))
+
             score.load_state_dict(states[0])
-            ### Make sure we can resume with different eps
+
             states[1]['param_groups'][0]['eps'] = self.config.optim.eps
             optimizer.load_state_dict(states[1])
+
             start_epoch = states[2]
+
             step = states[3]
+
             if self.config.model.ema:
                 ema_helper.load_state_dict(states[4])
+            
+            #delete the states variable afterward in order to save CUDA memory
+            mem_use = str(torch.cuda.memory_allocated(device=self.config.device))
+            mem_res = str(torch.cuda.memory_reserved(device=self.config.device))
+            print("\n\nMEMORY ALLOCATED: " + mem_use)
+            print("MEMORY RESERVED: " + mem_res + "\n\n")
+
+            print("CLEANING UP LOADED STATES...")
+            del states
+            torch.cuda.empty_cache()
+
+            mem_use = str(torch.cuda.memory_allocated(device=self.config.device))
+            mem_res = str(torch.cuda.memory_reserved(device=self.config.device))
+            print("\n\nMEMORY ALLOCATED: " + mem_use)
+            print("MEMORY RESERVED: " + mem_res + "\n\n")
+
 
         #grab all L noise levels
         #for RTM_N this is the lambdas
@@ -199,6 +219,9 @@ class NCSNRunner():
 
                 #every snapshot_freq iterations, save the weights and sample if desired
                 if step % self.config.training.snapshot_freq == 0:
+
+                    #if dynamically calculating the lambda/sigma values, update the list with mean values
+                    #also update the model values of sigma  
                     if self.config.model.sigma_dist == 'rtm_dynamic':
                         sigmas = sigmas_running / total_n_shots_count #update the master sigmas list
                         score.module.set_sigmas(sigmas)
