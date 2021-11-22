@@ -1,7 +1,7 @@
 training:
   batch_size: 16
-  n_epochs: 100000  #number of training epochs - superceded by n_iters 
-  n_iters: 100001  #maximum number of training iterations - stops before n_epochs if needed
+  n_epochs: 200000  #number of training epochs - superceded by n_iters 
+  n_iters: 200001  #maximum number of training iterations - stops before n_epochs if needed
   snapshot_freq: 1000 #frequency with which to save weights and sample from output
   snapshot_sampling: true 
   anneal_power: 2 

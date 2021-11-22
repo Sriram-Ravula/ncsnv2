@@ -163,7 +163,7 @@ def get_dataset(args, config):
     elif config.data.dataset == 'RTM_N':
         tran_transform = transforms.Compose([
             transforms.Resize(size = [config.data.image_size, config.data.image_size], \
-                interpolation=transforms.InterpolationMode.BICUBIC),
+                interpolation=transforms.InterpolationMode.BICUBIC),    #no horizontal flip - would affect RTM_n image!
         ])
 
         dataset = RTM_N(path="/scratch/08269/rstone/full_rtm_8048", transform=tran_transform)
