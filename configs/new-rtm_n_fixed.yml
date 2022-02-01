@@ -1,0 +1,70 @@
+training:
+  batch_size: 16
+  n_epochs: 500000  
+  n_iters: 500001  
+  snapshot_freq: 5000 
+  snapshot_sampling: true 
+  anneal_power: 2 
+  log_all_sigmas: false
+
+sampling:
+  batch_size: 36  
+  data_init: false
+  step_lr: 0.0000016  
+  n_steps_each: 25 
+  ckpt_id: 80000  
+  final_only: true
+  fid: false
+  denoise: true 
+  num_samples4fid: 10000
+  inpainting: false
+  interpolation: false
+  n_interpolations: 8
+
+#unused
+fast_fid:
+  batch_size: 1000
+  num_samples: 1000
+  step_lr: 0.0000009
+  n_steps_each: 3
+  begin_ckpt: 100000
+  end_ckpt: 80000
+  verbose: false
+  ensemble: false
+
+test:
+  begin_ckpt: 5000
+  end_ckpt: 80000
+  batch_size: 100
+
+data:
+  dataset: "RTM_N"
+  image_size: 256
+  channels: 1
+  logit_transform: false
+  uniform_dequantization: false
+  gaussian_dequantization: false
+  random_flip: false
+  rescaled: false
+  num_workers: 8
+
+model:
+  ema: true 
+  ema_rate: 0.999 
+  spec_norm: false
+  sigma_dist: rtm 
+  num_classes: 15
+  n_shots: [5, 6, 7, 8, 9, 10, 12, 14, 16, 18, 20, 25, 30, 40, 50]
+  lambdas_list: [0.11445988, 0.11024038, 0.10656705, 0.10331669, 0.10041092, 0.09782778, 0.09314086, 0.08962406, 0.0862099 , 0.08336803, 0.08065271, 0.0752907 , 0.07084692, 0.06383445, 0.05851439]
+  normalization: InstanceNorm++
+  nonlinearity: elu
+  ngf: 128
+
+optim:
+  weight_decay: 0.000
+  optimizer: "Adam"
+  lr: 0.0001
+  beta1: 0.9
+  amsgrad: false
+  eps: 0.00000001
+

@@ -106,7 +106,7 @@ def get_dataset(args, config):
     elif config.data.dataset == 'VELOCITY_FINE':
         tran_transform = transforms.Compose([
             transforms.Resize(size = [config.data.image_size, config.data.image_size], \
-                interpolation=transforms.InterpolationMode.BICUBIC, antialias=True),
+                interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.RandomHorizontalFlip(p=0.5)
         ])
 
@@ -125,7 +125,7 @@ def get_dataset(args, config):
     elif config.data.dataset == 'VELOCITY_DIFFERENCE':
         tran_transform = transforms.Compose([
             transforms.Resize(size = [config.data.image_size, config.data.image_size], \
-                interpolation=transforms.InterpolationMode.BICUBIC, antialias=True),
+                interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.RandomHorizontalFlip(p=0.5)
         ])
 
@@ -144,11 +144,11 @@ def get_dataset(args, config):
     elif config.data.dataset == 'VELOCITY_RTM':
         tran_transform = transforms.Compose([
             transforms.Resize(size = [config.data.image_size, config.data.image_size], \
-                interpolation=transforms.InterpolationMode.BICUBIC, antialias=True),
+                interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.RandomHorizontalFlip(p=0.5)
         ])
 
-        dataset = Velocity(path=os.path.join(args.exp, 'datasets', '8009_rtm_images.npy'), transform=tran_transform)
+        dataset = Velocity(path="/scratch/04703/sravula/experiments/datasets/rtm_243.npy", transform=tran_transform)
 
         num_items = len(dataset)
         indices = list(range(num_items))
