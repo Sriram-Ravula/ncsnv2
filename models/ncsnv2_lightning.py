@@ -3,9 +3,34 @@ from pytorch_lightning import LightningModule
 
 from models import get_sigmas
 from models.ncsnv2 import NCSNv2Deepest
-from models.ema import EMAHelper
 
 from losses.dsm import anneal_dsm_score_estimation, rtm_score_estimation
+
+class EMA(nn.Module):
+    """ Model Exponential Moving Average V2 from timm"""
+    def __init__(self, model, decay=0.999):
+        super(EMA, self).__init__()
+        # make a copy of the model for accumulating moving average of weights
+        self.module = torch.copy.deepcopy(model)
+        self.module.eval()
+        self.decay = decay
+    
+    def forward(self, x, y):
+        return self.module(x, y)
+
+    def _update(self, model, update_fn):
+        """Performs EMA"""
+        with torch.no_grad():
+            for ema_v, model_v in zip(self.module.state_dict().values(), model.state_dict().values()):
+                ema_v.copy_(update_fn(ema_v, model_v))
+
+    def update(self, model):
+        """Updates the EMA with the given model's weights"""
+        self._update(model, update_fn=lambda e, m: self.decay * e + (1. - self.decay) * m)
+
+    def set(self, model):
+        """Used to set the EMA weights equal to model"""
+        self._update(model, update_fn=lambda e, m: m)
 
 class NCSNv2_Lightning(LightningModule):
     def __init__(self, args, config):
@@ -14,26 +39,20 @@ class NCSNv2_Lightning(LightningModule):
         self.config = config
         self.args = args
 
+        #these are nn.modules so they automatically move between devices and stuff
         self.score = NCSNv2Deepest(config)
-        #self.test_score = self.score #used in testing
+        self.score_ema = EMA(self.score, self.config.model.ema_rate) if self.config.model.ema else self.score
 
-        #TODO ema introduces a lot of distributed- and GPU-rank related questions
-        #Test this thoroughly
-        if self.config.model.ema:
-            #(I think) this will be instantiated on only the rank-0 GPU of each node since it is not nn.module
-            self.ema_helper = EMAHelper(mu=self.config.model.ema_rate) 
-            self.ema_helper.register(self.score, False)
-            #Will be used during validation. We want it on the appropriate GPU so we will initialize 
-            #self.test_score = self.ema_helper.ema_copy(self.score, False)   
-
-        self.sigmas = get_sigmas(self.config).to(self.device) #TODO do we need a .to() for a tensor or does it know where to go?
+        #below this are tensors, so they need to be registered as module attributes in order to move automatically
+        self.register_buffer("sigmas", get_sigmas(self.config))
 
         if self.config.data.dataset == 'RTM_N':
-            self.n_shots = np.asarray(self.config.model.n_shots).squeeze()
-            self.n_shots = torch.from_numpy(self.n_shots).type_as(self.sigmas)
+            n_shots = np.asarray(self.config.model.n_shots).squeeze()
+            n_shots = torch.from_numpy(n_shots)
             #make sure it has dimension > 0 if it is a singleton (useful for indexing)
-            if self.n_shots.numel() == 1:
-                self.n_shots = torch.unsqueeze(self.n_shots, 0)
+            if n_shots.numel() == 1:
+                n_shots = torch.unsqueeze(n_shots, 0)
+            self.register_buffer("n_shots", n_shots)
             
             #If we are dyamically altering lambdas, start a count of each n_shot encountered in training and a running sum of MSEs for each n_shot
             if self.config.model.sigma_dist == 'rtm_dynamic':
@@ -41,8 +60,6 @@ class NCSNv2_Lightning(LightningModule):
                     """Helper function for reducing a tensor only along its batch dimension"""
                     return torch.mean(x, dim=0) 
                 self.reduction_fn = mean_reduce
-                self.total_n_shots_count = torch.zeros(self.n_shots.numel()).type_as(self.sigmas)
-                self.sigmas_running = get_sigmas(self.config).type_as(self.sigmas)
 
         self.log_sample_path = os.path.join(args.log_path, 'samples')
         os.makedirs(self.log_sample_path, exist_ok=True)
@@ -69,100 +86,105 @@ class NCSNv2_Lightning(LightningModule):
         return opt
     
     def forward(self, x, noise_level_idcs):
-        return self.score(x, noise_level_idcs)
+        """Returns the output from the EMA model.
+           If not using EMA, returns output from score network."""
+        return self.score_ema(x, noise_level_idcs)
     
-    def training_step(self, batch, batch_idx):
+    def shared_step(self, batch, batch_idx, val=False):
+        if val:
+            model = self.score_ema
+        else:
+            model = self.score
+
         X, y = batch #assume the transform is absorbed into the datamodule
 
         if self.config.model.sigma_dist == 'rtm':
-            loss = rtm_score_estimation(self.score, (X, y), self.n_shots, self.sigmas, dataset, 
+            loss = rtm_score_estimation(model, (X, y), self.n_shots, self.sigmas, dataset, 
                                         dynamic_lambdas=False, labels=None)
-            train_dict = {'loss': loss}
+            out_dict = {'loss': loss}
         elif self.config.model.sigma_dist == 'rtm_dynamic':
-            loss, sum_mses_list, n_shots_count = rtm_score_estimation(self.score, (X, y), self.n_shots, self.sigmas, dataset, 
+            loss, sigmas_running, n_shots_count = rtm_score_estimation(model, (X, y), self.n_shots, self.sigmas, dataset, 
                                                     dynamic_lambdas=True, labels=None)
-            train_dict = {'loss': loss,
-                          'n_shots_count': n_shots_count,
-                          'sum_mses_list': sum_mses_list}
+            out_dict = {'loss': loss,
+                        'n_shots_count': n_shots_count,
+                        'sigmas_running': sigmas_running}
         else:
-            loss = anneal_dsm_score_estimation(self.score, X, self.sigmas, None, self.config.training.anneal_power)
-            train_dict = {'loss': loss}
-
-        self.log("train_loss", loss.item(), prog_bar=True, on_step=True, on_epoch=True, logger=True, sync_dist=True, reduce_fx='mean')
+            loss = anneal_dsm_score_estimation(model, X, self.sigmas, None, self.config.training.anneal_power)
+            out_dict = {'loss': loss}
+        
+        return out_dict
+    
+    def training_step(self, batch, batch_idx):
+        train_dict = self.shared_step(batch, batch_idx)
+        
+        self.log("train_loss", train_dict['loss'], prog_bar=True, on_step=True, on_epoch=True, logger=True)
 
         return train_dict
     
     def on_train_batch_end(self, outputs):
-        """Update the EMA weights. Done at the end of the training batch after backwards and step.
-           Reduce the shot count and running sigmas across all GPUs and calculate updated sigma""""
+        """Done at the end of the training batch after backwards and step
+           Update the EMA weights.
+            - must go here since we EMA expects to be updated after every score network update."""
         if self.config.model.ema:
-            self.ema_helper.update(self.score)
-        
-        if self.config.model.sigma_dist != 'rtm_dynamic':
-            return
-        
-        #update the running shot count and sigmas across all devices
-        shot_counts = outputs['n_shots_count']
-        sigmas_list = outputs['sum_mses_list']
-
-        for _, count in shot_counts.items():
-            self.total_n_shots_count += n_shots_count 
-        for _, sigmas in sigmas_list.items():
-            self.sigmas_running += sigmas_list
-        
-        #calculate the new value of sigma 
-        self.sigmas = self.sigmas_running / self.total_n_shots_count #update the master sigmas list
-        
-        #log the current values
-        self.log("sigmas", self.sigmas, prog_bar=False, on_step=True, on_epoch=True, logger=True, sync_dist=True, reduce_fx=self.reduction_fn)
-        self.log("n_shots_count", self.n_shots_count, prog_bar=False, on_step=True, on_epoch=True, logger=True, sync_dist=True, reduce_fx=self.reduction_fn)
-        self.log("sigmas_running", self.sum_mses_lists, prog_bar=False, on_step=True, on_epoch=True, logger=True, sync_dist=True, reduce_fx=self.reduction_fn)
-
-        self.logger.experiment.add_histogram(tag="sigmas", values=self.sigmas, global_step=self.trainer.global_step)
-        self.logger.experiment.add_histogram(tag="n_shots_count", values=self.n_shots_count, global_step=self.trainer.global_step)
-        self.logger.experiment.add_histogram(tag="sigmas_running", values=self.sum_mses_lists, global_step=self.trainer.global_step)
-        
+            self.score_ema.update(self.score)
     
-    def on_validation_start(self):
-        """Sets up the test model"""
-        if self.config.model.ema:
-            self.test_score = self.ema_helper.ema_copy(self.score, False).to(self.device)
-        else:
-            self.test_score = self.score
-        self.test_score.eval()
+    def training_epoch_end(self, outputs):
+        """Log important stuff for rtm_dynamic.
+            - we do this here because we only want to log once an epoch to reduce overhead.
+           Updates sigma stuff if we are doing rtm_dynamic.
+            - we can put this here instead of at each training step end since score estimation with dynamic uses empirical sigmas""""
+           
+        if self.config.model.sigma_dist == 'rtm_dynamic':
+            #TODO make sure we are iterating over the outputs correctly!
+            #update the running shot count and sigmas across all devices
+            total_n_shots_count = 0
+            sigmas_running = 0
+
+            for out in outputs
+                shot_counts = out['n_shots_count']
+                sigmas_list = out['sigmas_running']
+                
+                for count in shot_counts:
+                    total_n_shots_count += count 
+                for sigmas in sigmas_list:
+                    sigmas_running += sigmas
+            
+            #calculate the new value of sigma 
+            self.sigmas = self.current_epoch * self.sigmas + (self.sigmas_running / self.total_n_shots_count)
+            self.sigmas /= (self.current_epoch + 1)
+
+            #reset these guys so they don't overflow
+            total_n_shots_count = 0
+            sigmas_running = 0
+
+            self.score.set_sigmas(self.sigmas)
+
+            #log the current values
+            if self.trainer.is_global_zero:
+                np.save(os.path.join(self.log_sample_path, 'sigmas_{}.npy'.format(self.current_epoch)), self.sigmas.cpu().numpy())
+
+                self.log("sigmas", self.sigmas, prog_bar=False,  logger=True,  rank_zero_only=True)
+                self.log("n_shots_count", self.n_shots_count, prog_bar=False, logger=True, rank_zero_only=True)
+                self.log("sigmas_running", self.sigmas_running, prog_bar=False, logger=True, rank_zero_only=True)
+
+                self.logger.experiment.add_histogram(tag="sigmas", values=self.sigmas, global_step=self.trainer.global_step)
+                self.logger.experiment.add_histogram(tag="n_shots_count", values=self.n_shots_count, global_step=self.trainer.global_step)
+                self.logger.experiment.add_histogram(tag="sigmas_running", values=self.sigmas_running, global_step=self.trainer.global_step)
 
     def validation_step(self, batch, batch_idx):
         """Calculates test loss on a batch"""
-        X, y = batch
+        val_dict = self.shared_step(batch, batch_idx, val=True)
 
-        if self.config.model.sigma_dist == 'rtm':
-            loss = rtm_score_estimation(self.test_score, (X, y), self.n_shots, self.sigmas, dataset, 
-                                        dynamic_lambdas=False, labels=None)
-        elif self.config.model.sigma_dist == 'rtm_dynamic':
-            loss, _, _ = rtm_score_estimation(self.test_score, (X, y), self.n_shots, self.sigmas, dataset, 
-                                                    dynamic_lambdas=True, labels=None)
-        else:
-            loss = anneal_dsm_score_estimation(self.test_score, X, self.sigmas, None, self.config.training.anneal_power)
-
-        self.log("val_loss", loss.item(), prog_bar=True, on_step=True, on_epoch=True, logger=True, sync_dist=True, reduce_fx='mean')
+        self.log("val_loss", val_dict['loss'], prog_bar=True, on_step=True, on_epoch=True, logger=True, sync_dist=True)
 
         if self.current_epoch % self.config.training.snapshot_freq == 0:
             self.sample_rtm()
     
     def on_validation_epoch_end(self):
         """Checks the need to sample and then samples if necessary"""
-        if self.config.model.sigma_dist == 'rtm_dynamic':
-            self.score.set_sigmas(self.sigmas)
-            if self.global_rank == 0:
-                np.save(os.path.join(self.log_sample_path, 'lambdas_{}.npy'.format(self.trainer.global_step)), self.sigmas.cpu().numpy())
+
         
     def sample_rtm(self):
         #we rteally need to introduce the dataloader to be able to function here!
 
-
-    
-    def on_validation_end(self):
-        """Tears down the test model"""
-        del self.test_score
-        self.test_score = None
 

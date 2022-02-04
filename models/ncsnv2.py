@@ -273,7 +273,7 @@ class NCSNv2Deepest(nn.Module):
         Parameters:
             sigmas: The new list of sigmas to use. Torch tensor with shape [num_noise_levels].
         """
-        self.sigmas = torch.squeeze(sigmas).type_as(self.sigmas).to(self.sigmas.device)
+        self.sigmas = torch.squeeze(sigmas).type_as(self.sigmas)
 
         #make sure it has dimension > 0 if it is a singleton
         #we want to have a 1D tensor for indexing  
