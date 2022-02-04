@@ -23,6 +23,4 @@ class Velocity(TensorDataset):
         if self.transform:
             sample = self.transform(sample)
 
-        target = 0 #dummy target
-
-        return sample, target
+        return sample, index

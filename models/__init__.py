@@ -18,16 +18,16 @@ def get_sigmas(config):
     if config.model.sigma_dist == 'geometric':
         sigmas = torch.tensor(
             np.exp(np.linspace(np.log(config.model.sigma_begin), np.log(config.model.sigma_end),
-                               config.model.num_classes))).float().to(config.device)
+                               config.model.num_classes))).float()
 
     elif config.model.sigma_dist == 'uniform':
         sigmas = torch.tensor(
             np.linspace(config.model.sigma_begin, config.model.sigma_end, config.model.num_classes)
-        ).float().to(config.device)
+        ).float()
     
     elif config.model.sigma_dist == 'rtm' or config.model.sigma_dist == 'rtm_dynamic':
         lambda_temp = np.asarray(config.model.lambdas_list).squeeze()
-        sigmas = torch.from_numpy(lambda_temp).float().to(config.device)
+        sigmas = torch.from_numpy(lambda_temp).float()
 
         #make sure the tensor has dimension > 0 if it is a singleton (useful for indexing)
         if sigmas.numel() == 1:

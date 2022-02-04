@@ -6,12 +6,14 @@ class EMAHelper(object):
         self.mu = mu
         self.shadow = {}
 
-    def register(self, module):
+    def register(self, module, move_device=True):
         if isinstance(module, nn.DataParallel):
             module = module.module
         for name, param in module.named_parameters():
             if param.requires_grad:
                 self.shadow[name] = param.data.clone()
+                if not move_device:
+                    self.shadow[name] = self.shadow[name].type_as(param.data)
 
     def update(self, module):
         if isinstance(module, nn.DataParallel):
@@ -27,16 +29,20 @@ class EMAHelper(object):
             if param.requires_grad:
                 param.data.copy_(self.shadow[name].data)
 
-    def ema_copy(self, module):
+    def ema_copy(self, module, move_device=True):
         if isinstance(module, nn.DataParallel):
             inner_module = module.module
-            module_copy = type(inner_module)(inner_module.config).to(inner_module.config.device)
+            module_copy = type(inner_module)(inner_module.config)
+            if move_device:
+                module_copy.to(inner_module.config.device)
             module_copy.load_state_dict(inner_module.state_dict())
             module_copy = nn.DataParallel(module_copy)
         else:
-            module_copy = type(module)(module.config).to(module.config.device)
+            module_copy = type(module)(module.config)
+            if move_device:
+                module_copy.to(module.config.device)
             module_copy.load_state_dict(module.state_dict())
-        # module_copy = copy.deepcopy(module)
+
         self.ema(module_copy)
         return module_copy
 
