@@ -157,7 +157,9 @@ class NCSNv2_Lightning(LightningModule):
             total_n_shots_count = 0
             sigmas_running = 0
 
+            #update the score network's sigmas list
             self.score.set_sigmas(self.sigmas)
+            self.score_ema.set_sigmas(self.sigmas)
 
             #log the current values
             if self.trainer.is_global_zero:
@@ -176,13 +178,11 @@ class NCSNv2_Lightning(LightningModule):
         val_dict = self.shared_step(batch, batch_idx, val=True)
 
         self.log("val_loss", val_dict['loss'], prog_bar=True, on_step=True, on_epoch=True, logger=True, sync_dist=True)
-
-        if self.current_epoch % self.config.training.snapshot_freq == 0:
-            self.sample_rtm()
     
     def on_validation_epoch_end(self):
         """Checks the need to sample and then samples if necessary"""
-
+        if self.current_epoch % self.config.training.snapshot_freq == 0:
+            self.sample_rtm()
         
     def sample_rtm(self):
         #we rteally need to introduce the dataloader to be able to function here!

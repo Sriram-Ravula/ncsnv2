@@ -57,13 +57,18 @@ class RTM_N(TensorDataset):
     def __len__(self):
         return self.tensors.size(0)
 
+    # def __getitem__(self, index):
+    #     sample = self.tensors[index]
+
+    #     if self.transform:
+    #         sample = self.transform(sample)
+
+    #     return sample, index
+
     def __getitem__(self, index):
         sample = self.tensors[index]
 
-        if self.transform:
-            sample = self.transform(sample)
-
-        return sample, index
+        #make this give you a random n-shot RTM image as well, cut out the manual middleman!
 
     def __build_dataset__(self):
         """
