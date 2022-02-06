@@ -276,7 +276,7 @@ class NCSNRunner():
                                 X = X.to(self.config.device)
                                 X = data_transform(self.config, X)
 
-                                next_init_sample = test_dataset.dataset.grab_rtm_image((X, [y]), n_shots[0].item()*torch.ones(1)) #dimension of ones is hacky fix
+                                next_init_sample = test_dataset.dataset.grab_rtm_image((X, [y]), n_shots[0].item()*torch.ones(1)).type_as(X) #dimension of ones is hacky fix
 
                                 init_samples[i] = next_init_sample
                             

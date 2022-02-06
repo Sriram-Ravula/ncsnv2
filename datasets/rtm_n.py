@@ -18,57 +18,54 @@ class RTM_N(TensorDataset):
         - 
         - preprocesses the images to stitch together "n-shots" when loaded at train time
     """
-    def __init__(self, path, transform=None, debug=True):
+    def __init__(self, path, transform=None, debug=True, load_path=None):
         self.debug = debug
         self.path = path
         self.transform = transform
 
-        self.slices = []
-        self.H = 0
-        self.W = 0
+        if load_path is None:
+            self.slices = []
+            self.H = 0
+            self.W = 0
 
-        #grb all the valid sids and set image dimensions
-        for dI in os.listdir(path):
+            #grb all the valid sids and set image dimensions
+            for dI in os.listdir(path):
 
-            slice_path = os.path.join(path, dI)
+                slice_path = os.path.join(path, dI)
 
-            if os.path.isdir(slice_path):
+                if os.path.isdir(slice_path):
 
-                img_path = os.path.join(slice_path, 'image.npy')
-                shots_path = os.path.join(slice_path, 'shots')
-                config_path = os.path.join(slice_path, 'config.yaml')
-                velocity_path = os.path.join(slice_path, 'slice.npy')
+                    img_path = os.path.join(slice_path, 'image.npy')
+                    shots_path = os.path.join(slice_path, 'shots')
+                    config_path = os.path.join(slice_path, 'config.yaml')
+                    velocity_path = os.path.join(slice_path, 'slice.npy')
 
-                if os.path.isfile(img_path) and os.path.isdir(shots_path) and os.path.isfile(config_path) and os.path.isfile(velocity_path):
+                    if os.path.isfile(img_path) and os.path.isdir(shots_path) and os.path.isfile(config_path) and os.path.isfile(velocity_path):
 
-                    self.slices.append(dI)
+                        self.slices.append(dI)
 
-                    if self.H == 0:
+                        if self.H == 0:
 
-                        self.W, self.H = load_exp(slice_path)['vel'].shape #shape is transposed of how it should be viewed
+                            self.W, self.H = load_exp(slice_path)['vel'].shape #shape is transposed of how it should be viewed
 
-        #TODO: Remove this debugging line
-        #self.slices = self.slices[0:1000]
+            #[N, 1, H, W] set of filtered and pre-processed RTM243 images in [0, 1]
+            #same order as self.slices - use this fact to index and match n_shots
+            self.tensors = self.__build_dataset__()
 
-        #[N, 1, H, W] set of filtered and pre-processed RTM243 images in [0, 1]
-        #same order as self.slices - use this fact to index and match n_shots
-        self.tensors = self.__build_dataset__()
+        else:
+            self.tensors, self.slices = self.load(load_path)
+            self.H, self.W = self.tensors.shape[-2:]
 
     def __len__(self):
         return self.tensors.size(0)
 
-    # def __getitem__(self, index):
-    #     sample = self.tensors[index]
-
-    #     if self.transform:
-    #         sample = self.transform(sample)
-
-    #     return sample, index
-
     def __getitem__(self, index):
         sample = self.tensors[index]
 
-        #make this give you a random n-shot RTM image as well, cut out the manual middleman!
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample, index
 
     def __build_dataset__(self):
         """
@@ -128,7 +125,7 @@ class RTM_N(TensorDataset):
 
         Args:
             input_sample: (X, y) pair of rtm_243 image and its index. (tensor:[N, 1, H, W], list:[N])
-            n_shots: the number of shots we want to select for each rtm_n image corresponding to the input. list:[N]
+            n_shots: the number of shots we want to select for each rtm_n image corresponding to the input. Tensor:[N]
             
         Returns:
             rtm_n_img: a tensor with same dimensions as X comprising rtm_n images. tensor:[N, 1, H, W]
@@ -181,7 +178,7 @@ class RTM_N(TensorDataset):
                 for i, n in enumerate(n_shots.squeeze().tolist()))
 
         #convert the results to torch with all the correct attributes and transforms
-        rtm_n_img = torch.from_numpy(rtm_n_img).to(image_orig.device).type(image_orig.dtype)
+        rtm_n_img = torch.from_numpy(rtm_n_img)
         rtm_n_img = self.transform(rtm_n_img)
 
         try:

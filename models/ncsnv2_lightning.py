@@ -9,7 +9,7 @@ from losses.dsm import anneal_dsm_score_estimation, rtm_score_estimation
 class EMA(nn.Module):
     """ Model Exponential Moving Average V2 from timm"""
     def __init__(self, model, decay=0.999):
-        super(EMA, self).__init__()
+        super().__init__()
         # make a copy of the model for accumulating moving average of weights
         self.module = torch.copy.deepcopy(model)
         self.module.eval()
