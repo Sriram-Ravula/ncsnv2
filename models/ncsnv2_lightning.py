@@ -4,7 +4,7 @@ from pytorch_lightning import LightningModule
 from models import get_sigmas
 from models.ncsnv2 import NCSNv2Deepest
 
-from losses.dsm import anneal_dsm_score_estimation, rtm_score_estimation
+from losses.losses_lightning import NCSN_Loss
 
 class EMA(nn.Module):
     """ Model Exponential Moving Average V2 from timm"""
@@ -40,8 +40,10 @@ class NCSNv2_Lightning(LightningModule):
         self.args = args
 
         #these are nn.modules so they automatically move between devices and stuff
-        self.score = NCSNv2Deepest(config)
+        self.score = NCSNv2Deepest(self.config)
         self.score_ema = EMA(self.score, self.config.model.ema_rate) if self.config.model.ema else self.score
+
+        self.criterion = NCSN_Loss(self.config)
 
         #below this are tensors, so they need to be registered as module attributes in order to move automatically
         self.register_buffer("sigmas", get_sigmas(self.config))
@@ -53,15 +55,10 @@ class NCSNv2_Lightning(LightningModule):
             if n_shots.numel() == 1:
                 n_shots = torch.unsqueeze(n_shots, 0)
             self.register_buffer("n_shots", n_shots)
-            
-            #If we are dyamically altering lambdas, start a count of each n_shot encountered in training and a running sum of MSEs for each n_shot
-            if self.config.model.sigma_dist == 'rtm_dynamic':
-                def mean_reduce(x):
-                    """Helper function for reducing a tensor only along its batch dimension"""
-                    return torch.mean(x, dim=0) 
-                self.reduction_fn = mean_reduce
+        else:
+            self.n_shots = None
 
-        self.log_sample_path = os.path.join(args.log_path, 'samples')
+        self.log_sample_path = os.path.join(self.args.log_path, 'samples')
         os.makedirs(self.log_sample_path, exist_ok=True)
         
     def configure_optimizers(self):
@@ -96,26 +93,19 @@ class NCSNv2_Lightning(LightningModule):
         else:
             model = self.score
 
-        X, y = batch #assume the transform is absorbed into the datamodule
-
-        if self.config.model.sigma_dist == 'rtm':
-            loss = rtm_score_estimation(model, (X, y), self.n_shots, self.sigmas, dataset, 
-                                        dynamic_lambdas=False, labels=None)
-            out_dict = {'loss': loss}
-        elif self.config.model.sigma_dist == 'rtm_dynamic':
-            loss, sigmas_running, n_shots_count = rtm_score_estimation(model, (X, y), self.n_shots, self.sigmas, dataset, 
-                                                    dynamic_lambdas=True, labels=None)
+        if self.config.model.sigma_dist == 'rtm_dynamic':
+            loss, sigmas_running, n_shots_count = self.criterion(model, batch, self.sigmas, n_shots=self.n_shots)
             out_dict = {'loss': loss,
                         'n_shots_count': n_shots_count,
                         'sigmas_running': sigmas_running}
         else:
-            loss = anneal_dsm_score_estimation(model, X, self.sigmas, None, self.config.training.anneal_power)
+            loss = self.criterion(model, batch, self.sigmas, n_shots=self.n_shots)
             out_dict = {'loss': loss}
         
         return out_dict
     
     def training_step(self, batch, batch_idx):
-        train_dict = self.shared_step(batch, batch_idx)
+        train_dict = self.shared_step(batch, batch_idx, val=False)
         
         self.log("train_loss", train_dict['loss'], prog_bar=True, on_step=True, on_epoch=True, logger=True)
 
@@ -184,7 +174,38 @@ class NCSNv2_Lightning(LightningModule):
         if self.current_epoch % self.config.training.snapshot_freq == 0:
             self.sample_rtm()
         
-    def sample_rtm(self):
+    def anneal_langevin_rtm(self, batch):
         #we rteally need to introduce the dataloader to be able to function here!
+
+    def anneal_langevin_dsm(self):
+        num_samples = self.config.sampling.batch_size // self.trainer.world_size #number of samples to make on this GPU
+
+        x_mod = torch.rand(num_samples, self.config.data.channels,
+                                  self.config.data.image_size, self.config.data.image_size).type_as(self.sigmas)
+        
+        n_steps_each = self.config.sampling.n_steps_each
+        step_lr = self.config.sampling.step_lr
+        final_only = self.config.sampling.final_only
+        verbose = self.args.verbose
+        denoise = self.config.sampling.denoise
+
+        images = []
+        
+        with torch.no_grad():
+            for c, sigma in enumerate(self.sigmas):
+                labels = torch.ones(x_mod.shape[0).type_as(self.sigmas) * c 
+                labels = labels.long()
+
+                step_size = step_lr * (sigma / self.sigmas[-1]) ** 2
+
+                for s in range(n_steps_each):
+                    grad = self(x_mod, labels)
+
+                    noise = torch.randn_like(x_mod) 
+
+                    #Langevin update step
+                    x_mod = x_mod + step_size * grad + np.sqrt(step_size * 2) * noise 
+
+                    
 
 

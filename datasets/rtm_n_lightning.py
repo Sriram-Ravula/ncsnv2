@@ -22,7 +22,7 @@ class RTM_Dataset(RTM_N):
 
         self.n_shots = n_shots
         self.manual_hflip = manual_hflip
-        if manual_hflip:
+        if self.manual_hflip:
             self.flip_image = transforms.functional.hflip()
 
     def __getitem__(self, index):
@@ -92,13 +92,13 @@ class RTMDataModule(LightningDataModule):
             n_shots = torch.unsqueeze(n_shots, 0)
         self.n_shots = n_shots
 
-        self.hflip = config.data.random_flip
+        self.hflip = self.config.data.random_flip
 
-        if config.data.dataset == 'RTM_N' or not self.hflip:
-            self.transform = transforms.Compose([transforms.Resize(size = [config.data.image_size, config.data.image_size],
+        if self.config.data.dataset == 'RTM_N' or not self.hflip:
+            self.transform = transforms.Compose([transforms.Resize(size = [self.config.data.image_size, self.config.data.image_size],
                                                 interpolation=transforms.InterpolationMode.BICUBIC)])
         else:
-            self.transform = transforms.Compose([transforms.Resize(size = [config.data.image_size, config.data.image_size],
+            self.transform = transforms.Compose([transforms.Resize(size = [self.config.data.image_size, self.config.data.image_size],
                                     interpolation=transforms.InterpolationMode.BICUBIC),
                                     transforms.RandomHorizontalFlip(p=0.5)])
             self.hflip = False
