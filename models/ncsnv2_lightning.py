@@ -1,22 +1,38 @@
 import torch
+import torchvision
+from torchvision.utils import make_grid, save_image
 from pytorch_lightning import LightningModule
 
-from models import get_sigmas
+from models import get_sigmas, anneal_Langevin_dynamics
 from models.ncsnv2 import NCSNv2Deepest
 
 from losses.losses_lightning import NCSN_Loss
 
 class EMA(nn.Module):
-    """ Model Exponential Moving Average V2 from timm"""
+    """
+    Model Exponential Moving Average V2 from timm.
+    EMA that expects to be updates after every step of the main model.
+    Updates have the form W = decay * W + (1 - decay) * W. 
+    """
     def __init__(self, model, decay=0.999):
+        """
+        Args:
+            model: The model to do EMA on.
+                   Type: nn.Module.
+            decay: The EMA rate.
+                   Type: float. 
+                   Default value: 0.999.  
+        """
         super().__init__()
-        # make a copy of the model for accumulating moving average of weights
         self.module = torch.copy.deepcopy(model)
         self.module.eval()
         self.decay = decay
     
-    def forward(self, x, y):
-        return self.module(x, y)
+    def forward(self, x, y, sigmas=None):
+        """
+        Performs a forward pass using the underlying EMA model. 
+        """
+        return self.module(x, y, sigmas)
 
     def _update(self, model, update_fn):
         """Performs EMA"""
@@ -39,7 +55,10 @@ class NCSNv2_Lightning(LightningModule):
         self.config = config
         self.args = args
 
-        #these are nn.modules so they automatically move between devices and stuff
+        self.log_sample_path = os.path.join(self.args.log_path, 'samples')
+        os.makedirs(self.log_sample_path, exist_ok=True)
+
+        #these are nn.modules so they automatically move between devices
         self.score = NCSNv2Deepest(self.config)
         self.score_ema = EMA(self.score, self.config.model.ema_rate) if self.config.model.ema else self.score
 
@@ -51,15 +70,11 @@ class NCSNv2_Lightning(LightningModule):
         if self.config.data.dataset == 'RTM_N':
             n_shots = np.asarray(self.config.model.n_shots).squeeze()
             n_shots = torch.from_numpy(n_shots)
-            #make sure it has dimension > 0 if it is a singleton (useful for indexing)
             if n_shots.numel() == 1:
                 n_shots = torch.unsqueeze(n_shots, 0)
             self.register_buffer("n_shots", n_shots)
         else:
-            self.n_shots = None
-
-        self.log_sample_path = os.path.join(self.args.log_path, 'samples')
-        os.makedirs(self.log_sample_path, exist_ok=True)
+            self.register_buffer("n_shots", None)
         
     def configure_optimizers(self):
         lr = self.config.optim.lr
@@ -82,10 +97,10 @@ class NCSNv2_Lightning(LightningModule):
         
         return opt
     
-    def forward(self, x, noise_level_idcs):
+    def forward(self, x, noise_level_idcs, noise_levels=None):
         """Returns the output from the EMA model.
            If not using EMA, returns output from score network."""
-        return self.score_ema(x, noise_level_idcs)
+        return self.score_ema(x, noise_level_idcs, noise_levels)
     
     def shared_step(self, batch, batch_idx, val=False):
         if val:
@@ -94,17 +109,24 @@ class NCSNv2_Lightning(LightningModule):
             model = self.score
 
         if self.config.model.sigma_dist == 'rtm_dynamic':
-            loss, sigmas_running, n_shots_count = self.criterion(model, batch, self.sigmas, n_shots=self.n_shots)
+            loss, sigmas_running, n_shots_count = self.criterion(model, batch, self.sigmas, n_shots=self.n_shots, val=val)
             out_dict = {'loss': loss,
                         'n_shots_count': n_shots_count,
                         'sigmas_running': sigmas_running}
         else:
-            loss = self.criterion(model, batch, self.sigmas, n_shots=self.n_shots)
+            loss = self.criterion(model, batch, self.sigmas, n_shots=self.n_shots, val=val)
             out_dict = {'loss': loss}
         
         return out_dict
     
     def training_step(self, batch, batch_idx):
+        if batch_idx == 0 and self.current_epoch == 0:
+            grid = make_grid(batch[0], nrow=4, normalize=True)
+            self.logger.experiment.add_image('RTM243_train_sample', grid, self.current_epoch)
+            if self.config.data.dataset == 'RTM_N':
+                grid = make_grid(batch[2], nrow=4, normalize=True)
+                self.logger.experiment.add_image('RTMN_train_sample', grid, self.current_epoch)
+
         train_dict = self.shared_step(batch, batch_idx, val=False)
         
         self.log("train_loss", train_dict['loss'], prog_bar=True, on_step=True, on_epoch=True, logger=True)
@@ -140,16 +162,13 @@ class NCSNv2_Lightning(LightningModule):
                     sigmas_running += sigmas
             
             #calculate the new value of sigma 
-            self.sigmas = self.current_epoch * self.sigmas + (self.sigmas_running / self.total_n_shots_count)
+            self.sigmas = self.current_epoch * self.sigmas + (sigmas_running / total_n_shots_count)
             self.sigmas /= (self.current_epoch + 1)
-
-            #reset these guys so they don't overflow
-            total_n_shots_count = 0
-            sigmas_running = 0
 
             #update the score network's sigmas list
             self.score.set_sigmas(self.sigmas)
-            self.score_ema.set_sigmas(self.sigmas)
+            if self.config.model.ema:
+                self.score_ema.module.set_sigmas(self.sigmas)
 
             #log the current values
             if self.trainer.is_global_zero:
@@ -163,49 +182,70 @@ class NCSNv2_Lightning(LightningModule):
                 self.logger.experiment.add_histogram(tag="n_shots_count", values=self.n_shots_count, global_step=self.trainer.global_step)
                 self.logger.experiment.add_histogram(tag="sigmas_running", values=self.sigmas_running, global_step=self.trainer.global_step)
 
+    def on_validation_epoch_start(self):
+        """Checks if it is appropriate to sample"""
+        if self.current_epoch % self.config.training.snapshot_freq == 0:
+            if self.config.data.dataset == 'RTM_N':
+                batch = next(iter(self.val_dataloader()))
+            else:
+                batch = None
+
+            samples = self.sample(batch)
+    
     def validation_step(self, batch, batch_idx):
         """Calculates test loss on a batch"""
+        if batch_idx == 0 and self.current_epoch == 0:
+            grid = make_grid(batch[0], nrow=4, normalize=True)
+            self.logger.experiment.add_image('RTM243_val_sample', grid, self.current_epoch)
+            if self.config.data.dataset == 'RTM_N':
+                grid = make_grid(batch[2], nrow=4, normalize=True)
+                self.logger.experiment.add_image('RTMN_val_sample', grid, self.current_epoch)
+
         val_dict = self.shared_step(batch, batch_idx, val=True)
 
         self.log("val_loss", val_dict['loss'], prog_bar=True, on_step=True, on_epoch=True, logger=True, sync_dist=True)
     
-    def on_validation_epoch_end(self):
-        """Checks the need to sample and then samples if necessary"""
-        if self.current_epoch % self.config.training.snapshot_freq == 0:
-            self.sample_rtm()
-        
-    def anneal_langevin_rtm(self, batch):
-        #we rteally need to introduce the dataloader to be able to function here!
-
-    def anneal_langevin_dsm(self):
+    def sample(self, batch):
         num_samples = self.config.sampling.batch_size // self.trainer.world_size #number of samples to make on this GPU
 
-        x_mod = torch.rand(num_samples, self.config.data.channels,
-                                  self.config.data.image_size, self.config.data.image_size).type_as(self.sigmas)
+        if self.config.data.dataset == 'RTM_N':
+            init_samples = batch[2] #the RTM_N image
+            rtm_243 = batch[0]
+            if init_samples.shape[0] > num_samples:
+                init_samples = init_samples[:num_samples]
+                rtm_243 = rtm_243[:num_samples]
+
+            image_grid = make_grid(init_samples, nrow=4, normalize=True)
+            save_image(image_grid,
+                        os.path.join(self.args.log_sample_path, 'init_epoch{}_{}.png'.format(self.current_epoch, self.global_rank)))
+            self.logger.experiment.add_image('init_sample', image_grid, self.current_epoch)
+
+            image_grid = make_grid(rtm_243, nrow=4, normalize=True)
+            save_image(image_grid,
+                        os.path.join(self.args.log_sample_path, 'rtm243__epoch{}_{}.png'.format(self.current_epoch, self.global_rank)))
+            self.logger.experiment.add_image('rtm243_sample', image_grid, self.current_epoch)
+
+        else:
+            init_samples = torch.rand(num_samples, self.config.data.channels,
+                                        self.config.data.image_size, self.config.data.image_size).type_as(batch[0])
         
-        n_steps_each = self.config.sampling.n_steps_each
-        step_lr = self.config.sampling.step_lr
-        final_only = self.config.sampling.final_only
-        verbose = self.args.verbose
-        denoise = self.config.sampling.denoise
-
-        images = []
+        out_samples = anneal_Langevin_dynamics(x_mod=init_samples, 
+                                               scorenet=self.score_ema, 
+                                               sigmas=self.sigmas, 
+                                               n_steps_each=self.config.sampling.n_steps_each, 
+                                               step_lr=self.config.sampling.step_lr,
+                                               final_only=self.config.sampling.final_only, 
+                                               verbose=True, 
+                                               denoise=self.config.sampling.denoise, 
+                                               add_noise=(self.config.data.dataset != 'RTM_N'))
         
-        with torch.no_grad():
-            for c, sigma in enumerate(self.sigmas):
-                labels = torch.ones(x_mod.shape[0).type_as(self.sigmas) * c 
-                labels = labels.long()
+        image_grid = make_grid(out_samples, nrow=4, normalize=True)
+        save_image(image_grid,
+                    os.path.join(self.args.log_sample_path, 'samples_epoch{}_{}.png'.format(self.current_epoch, self.global_rank)))
+        self.logger.experiment.add_image('output_sample', image_grid, self.current_epoch)
 
-                step_size = step_lr * (sigma / self.sigmas[-1]) ** 2
-
-                for s in range(n_steps_each):
-                    grad = self(x_mod, labels)
-
-                    noise = torch.randn_like(x_mod) 
-
-                    #Langevin update step
-                    x_mod = x_mod + step_size * grad + np.sqrt(step_size * 2) * noise 
-
+        mse = torch.nn.MSELoss(recuction='mean')
+        self.log("sample_loss", mse(out_samples, rtm_243), prog_bar=True, logger=True)
+        
+        return out_samples
                     
-
-

@@ -26,6 +26,9 @@ class RTM_Dataset(RTM_N):
             self.flip_image = transforms.functional.hflip()
 
     def __getitem__(self, index):
+        """
+        Returns (RTM243, slice_id) for normal runs and (RTM243, slice_id, RTM_N, N) for rtm 
+        """
         #(0) get the 243-shot RTM image
         rtm243_sample = self.tensors[index]
 
@@ -86,11 +89,13 @@ class RTMDataModule(LightningDataModule):
 
         self.dataset_save_path = "tmp/rtm243data"
 
-        n_shots = np.asarray(self.config.model.n_shots).squeeze()
-        n_shots = torch.from_numpy(n_shots)
-        if n_shots.numel() == 1:
-            n_shots = torch.unsqueeze(n_shots, 0)
-        self.n_shots = n_shots
+        if self.config.data.dataset == 'RTM_N':
+            self.n_shots = np.asarray(self.config.model.n_shots).squeeze()
+            self.n_shots = torch.from_numpy(self.n_shots)
+            if self.n_shots.numel() == 1:
+                self.n_shots = torch.unsqueeze(self.n_shots, 0)
+        else:
+            self.n_shots = None
 
         self.hflip = self.config.data.random_flip
 
@@ -126,7 +131,7 @@ class RTMDataModule(LightningDataModule):
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset, batch_size=self.config.training.batch_size, shuffle=True,
-                                num_workers=self.config.data.num_workers)
+                                num_workers=self.config.data.num_workers, drop_last=True)
 
     def val_dataloader(self):
         return DataLoader(self.val_dataset, batch_size=self.config.training.batch_size, shuffle=True,

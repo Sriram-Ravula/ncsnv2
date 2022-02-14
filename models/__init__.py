@@ -65,7 +65,7 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
     with torch.no_grad():
         for c, sigma in enumerate(sigmas):
             #create the input to NCSN that tells it which noise level we are on
-            labels = torch.ones(x_mod.shape[0], device=x_mod.device) * c 
+            labels = torch.ones(x_mod.shape[0]).type_as(x_mod) * c 
             labels = labels.long()
 
             step_size = step_lr * (sigma / sigmas[-1]) ** 2
@@ -92,20 +92,20 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
                 grad_mean_norm = torch.norm(grad.mean(dim=0).view(-1)) ** 2 * sigma ** 2
 
                 if not final_only:
-                    images.append(x_mod.to('cpu'))
+                    images.append(x_mod)
 
                 if verbose:
                     print("level: {}, step_size: {:.3f}, grad_norm: {:.3f}, image_norm: {:.3f}, snr: {:.3f}, grad_mean_norm: {:.3f}".format(
                         c, step_size, grad_norm.item(), image_norm.item(), snr.item(), grad_mean_norm.item()))
 
         if denoise:
-            last_noise = (len(sigmas) - 1) * torch.ones(x_mod.shape[0], device=x_mod.device)
+            last_noise = (len(sigmas) - 1) * torch.ones(x_mod.shape[0]).type_as(x_mod)
             last_noise = last_noise.long()
             x_mod = x_mod + sigmas[-1] ** 2 * scorenet(x_mod, last_noise)
-            images.append(x_mod.to('cpu'))
+            images.append(x_mod)
 
         if final_only:
-            return [x_mod.to('cpu')]
+            return [x_mod]
         else:
             return images
 

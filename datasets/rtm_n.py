@@ -186,5 +186,10 @@ class RTM_N(TensorDataset):
         except:  # noqa
             print('Could not clean-up automatically.')
 
-
         return rtm_n_img
+    
+    def load(self, load_path):
+        """
+        This function is meant to be overriden by a child class
+        """
+        return None, None

@@ -9,13 +9,16 @@ class NCSN_Loss(torch.nn.Module):
         self.dynamic_sigmas = True if self.config.model.sigma_dist == 'rtm_dynamic' else False
         self.anneal_power = self.config.training.anneal_power
     
-    def forward(self, scorenet, batch, sigmas, n_shots=None, labels=None):
+    def forward(self, scorenet, batch, sigmas, n_shots=None, labels=None, val=False):
         if self.loss_type == 'rtm':
-            return self.dsm_loss(scorenet, batch, sigmas, labels)
+            return self.rtm_loss(scorenet, batch, n_shots, sigmas, val)
         else:
-            return self.rtm_loss(scorenet, batch, n_shots, sigmas)
+            return self.dsm_loss(scorenet, batch, sigmas, labels)
     
     def dsm_loss(self, scorenet, batch, sigmas, labels=None):
+        """
+        expects batch consist of (RTM243, slice_id)
+        """
         X, _ = batch 
         if labels is None:
             labels = torch.randint(0, len(sigmas), (X.shape[0],)).type_as(X)
@@ -30,8 +33,11 @@ class NCSN_Loss(torch.nn.Module):
 
         return loss.mean(dim=0)
     
-    def rtm_loss(self, scorenet, batch, n_shots, sigmas):
-        X_243, slice_id, X_N, shot_idx
+    def rtm_loss(self, scorenet, batch, n_shots, sigmas, val=False):
+        """
+        Expects batch to consist of (RTM243, slice_id, RTM_N, N)
+        """
+        X_243, slice_id, X_N, shot_idx = batch
         
         #(1) form the targets 
         #targets has siz [N, C, H, W]
@@ -48,7 +54,7 @@ class NCSN_Loss(torch.nn.Module):
 
             for i, idx in enumerate(shot_idx):
                 sum_mses_list[idx] = sum_mses_list[idx] + sigma_n[i].item()
-                n_shots_count[idx] = n_shots_count[idx] + 1  
+                n_shots_count[idx] += 1
 
             sigma_n = sigma_n.view(X_243.shape[0], *([1] * len(X_243.shape[1:])))                 
         else:
@@ -62,7 +68,7 @@ class NCSN_Loss(torch.nn.Module):
         #labels has size [N] (batch size)
         #scores = [N, C, H, W]
         labels = torch.tensor(shot_idx).type_as(X_243)
-        if self.dynamic_sigmas:
+        if self.dynamic_sigmas and not val:
             #if dynamic, pass the measured sigma values to the score network to scale it
             scores = scorenet(X_N, labels, sigma_n)
         else:

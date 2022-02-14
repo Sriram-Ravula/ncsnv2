@@ -100,7 +100,7 @@ class NCSNRunner():
 
         #grab all L noise levels
         #for RTM_N this is the lambdas
-        sigmas = get_sigmas(self.config)
+        sigmas = get_sigmas(self.config).to(self.config.device)
 
         if self.config.data.dataset == 'RTM_N':
             n_shots = np.asarray(self.config.model.n_shots).squeeze()
@@ -312,7 +312,7 @@ class NCSNRunner():
 
                         sample = all_samples[-1].view(all_samples[-1].shape[0], self.config.data.channels,
                                                         self.config.data.image_size,
-                                                        self.config.data.image_size)
+                                                        self.config.data.image_size).cpu()
 
                         sample = inverse_data_transform(self.config, sample)
 
