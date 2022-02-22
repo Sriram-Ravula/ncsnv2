@@ -1,5 +1,8 @@
 import torch
 import torchvision
+import os
+import copy
+import numpy as np
 from torchvision.utils import make_grid, save_image
 from pytorch_lightning import LightningModule
 
@@ -8,7 +11,7 @@ from models.ncsnv2 import NCSNv2Deepest
 
 from losses.losses_lightning import NCSN_Loss
 
-class EMA(nn.Module):
+class EMA(torch.nn.Module):
     """
     Model Exponential Moving Average V2 from timm.
     EMA that expects to be updates after every step of the main model.
@@ -24,7 +27,7 @@ class EMA(nn.Module):
                    Default value: 0.999.  
         """
         super().__init__()
-        self.module = torch.copy.deepcopy(model)
+        self.module = copy.deepcopy(model)
         self.module.eval()
         self.decay = decay
     
@@ -56,7 +59,6 @@ class NCSNv2_Lightning(LightningModule):
         self.args = args
 
         self.log_sample_path = os.path.join(self.args.log_path, 'samples')
-        os.makedirs(self.log_sample_path, exist_ok=True)
 
         #these are nn.modules so they automatically move between devices
         self.score = NCSNv2Deepest(self.config)
@@ -144,7 +146,7 @@ class NCSNv2_Lightning(LightningModule):
         """Log important stuff for rtm_dynamic.
             - we do this here because we only want to log once an epoch to reduce overhead.
            Updates sigma stuff if we are doing rtm_dynamic.
-            - we can put this here instead of at each training step end since score estimation with dynamic uses empirical sigmas""""
+            - we can put this here instead of at each training step end since score estimation with dynamic uses empirical sigmas"""
            
         if self.config.model.sigma_dist == 'rtm_dynamic':
             #TODO make sure we are iterating over the outputs correctly!
@@ -152,7 +154,7 @@ class NCSNv2_Lightning(LightningModule):
             total_n_shots_count = 0
             sigmas_running = 0
 
-            for out in outputs
+            for out in outputs:
                 shot_counts = out['n_shots_count']
                 sigmas_list = out['sigmas_running']
                 
@@ -184,9 +186,21 @@ class NCSNv2_Lightning(LightningModule):
 
     def on_validation_epoch_start(self):
         """Checks if it is appropriate to sample"""
-        if self.current_epoch % self.config.training.snapshot_freq == 0:
+        if self.current_epoch % self.config.training.snapshot_freq == 0 and self.config.training.snapshot_sampling:
             if self.config.data.dataset == 'RTM_N':
-                batch = next(iter(self.val_dataloader()))
+                X, y, _, _ = next(iter(self.val_dataloader()))
+
+                init_samples = torch.zeros(X.shape[0], self.config.data.channels, self.config.data.image_size, 
+                                self.config.data.image_size).type_as(X)
+                
+                for i in range(X.shape[0]):
+                    X_cur = X[i].unsqueeze(0)
+                    y_cur = [y[i]]
+                    next_init_sample = self.val_dataloader().dataset.grab_rtm_image((X_cur, y_cur), \
+                                            self.n_shots[0].item()*torch.ones(1)).type_as(X) #dimension of ones is hacky fix
+                    init_samples[i] = next_init_sample
+                
+                batch = (X, y, init_samples, np.zeros(X.shape[0]))
             else:
                 batch = None
 
@@ -216,14 +230,17 @@ class NCSNv2_Lightning(LightningModule):
                 rtm_243 = rtm_243[:num_samples]
 
             image_grid = make_grid(init_samples, nrow=4, normalize=True)
-            save_image(image_grid,
-                        os.path.join(self.args.log_sample_path, 'init_epoch{}_{}.png'.format(self.current_epoch, self.global_rank)))
+            # save_image(image_grid,
+            #             os.path.join(self.args.log_sample_path, 'init_epoch{}_{}.png'.format(self.current_epoch, self.global_rank)))
             self.logger.experiment.add_image('init_sample', image_grid, self.current_epoch)
 
             image_grid = make_grid(rtm_243, nrow=4, normalize=True)
-            save_image(image_grid,
-                        os.path.join(self.args.log_sample_path, 'rtm243__epoch{}_{}.png'.format(self.current_epoch, self.global_rank)))
+            # save_image(image_grid,
+            #             os.path.join(self.args.log_sample_path, 'rtm243_epoch{}_{}.png'.format(self.current_epoch, self.global_rank)))
             self.logger.experiment.add_image('rtm243_sample', image_grid, self.current_epoch)
+
+            # np.savetxt(os.path.join(self.args.log_sample_path, 'sample_nshots_epoch{}_{}.'.format(self.current_epoch, self.global_rank)),\
+            #                         self.n_shots[batch[-1]].numpy())
 
         else:
             init_samples = torch.rand(num_samples, self.config.data.channels,
@@ -240,11 +257,11 @@ class NCSNv2_Lightning(LightningModule):
                                                add_noise=(self.config.data.dataset != 'RTM_N'))
         
         image_grid = make_grid(out_samples, nrow=4, normalize=True)
-        save_image(image_grid,
-                    os.path.join(self.args.log_sample_path, 'samples_epoch{}_{}.png'.format(self.current_epoch, self.global_rank)))
+        # save_image(image_grid,
+        #             os.path.join(self.args.log_sample_path, 'samples_epoch{}_{}.png'.format(self.current_epoch, self.global_rank)))
         self.logger.experiment.add_image('output_sample', image_grid, self.current_epoch)
 
-        mse = torch.nn.MSELoss(recuction='mean')
+        mse = torch.nn.MSELoss(reduction='mean')
         self.log("sample_loss", mse(out_samples, rtm_243), prog_bar=True, logger=True)
         
         return out_samples

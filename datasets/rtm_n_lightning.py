@@ -7,6 +7,7 @@ import time
 import shutil
 import random
 import pickle
+import PIL
 
 from pytorch_lightning import LightningDataModule
 import torchvision.transforms as transforms
@@ -23,7 +24,7 @@ class RTM_Dataset(RTM_N):
         self.n_shots = n_shots
         self.manual_hflip = manual_hflip
         if self.manual_hflip:
-            self.flip_image = transforms.functional.hflip()
+            self.flip_image = transforms.functional.hflip
 
     def __getitem__(self, index):
         """
@@ -47,7 +48,7 @@ class RTM_Dataset(RTM_N):
         #(2) if we are doing RTM_n, then we also want to grab a random n-shot image
         else:
             shot_idx = np.random.randint(low=0, high=self.n_shots.numel(), size=1)[0]
-            used_nshots = torch.tensor(self.n_shots[shot_idx])
+            used_nshots = self.n_shots[shot_idx].clone().detach()
 
             n_shot_sample = self.grab_rtm_image((rtm243_sample.unsqueeze(0), [index]), used_nshots).squeeze(0) #this is already transformed
 
@@ -79,6 +80,7 @@ class RTM_Dataset(RTM_N):
         with open(os.path.join(path, 'slices.pickle'), 'rb') as f:
             out_slices = pickle.load(f)
         
+        print("Successfully loaded images and slice ids")
         return out_tensors, out_slices
 
 class RTMDataModule(LightningDataModule):
@@ -87,7 +89,7 @@ class RTMDataModule(LightningDataModule):
         self.path = path
         self.config = config
 
-        self.dataset_save_path = "tmp/rtm243data"
+        self.dataset_save_path = "/scratch/04703/sravula/experiments/datasets/rtm_n"
 
         if self.config.data.dataset == 'RTM_N':
             self.n_shots = np.asarray(self.config.model.n_shots).squeeze()
@@ -101,17 +103,23 @@ class RTMDataModule(LightningDataModule):
 
         if self.config.data.dataset == 'RTM_N' or not self.hflip:
             self.transform = transforms.Compose([transforms.Resize(size = [self.config.data.image_size, self.config.data.image_size],
-                                                interpolation=transforms.InterpolationMode.BICUBIC)])
+                                                interpolation=PIL.Image.BICUBIC)])
         else:
             self.transform = transforms.Compose([transforms.Resize(size = [self.config.data.image_size, self.config.data.image_size],
-                                    interpolation=transforms.InterpolationMode.BICUBIC),
+                                    interpolation=PIL.Image.BICUBIC),
                                     transforms.RandomHorizontalFlip(p=0.5)])
             self.hflip = False
         
     def prepare_data(self):
         """Prepares the RTM_243 image dataset on a single process"""
-        dataset = RTM_Dataset(path=self.path) #just need the path for now since we are only using this to save
-        dataset.save(self.dataset_save_path)
+        image_path = os.path.join(self.dataset_save_path, '243_images.pt')
+        slice_path = os.path.join(self.dataset_save_path, 'slices.pickle')
+
+        if os.path.isfile(image_path) and os.path.isfile(slice_path):
+            print("Existing data found - skipping dataset construction")  
+        else:
+            dataset = RTM_Dataset(path=self.path) #just need the path for now since we are only using this to save
+            dataset.save(self.dataset_save_path)
 
     def setup(self, stage):
         dataset = RTM_Dataset(path=self.path, transform=self.transform, debug=True, load_path=self.dataset_save_path,

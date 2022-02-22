@@ -132,18 +132,21 @@ class RTM_N(TensorDataset):
         """
         image_orig, image_index = input_sample #the RTM_243 image and its index
 
-        folder = '/tmp/joblib_memmap' #temporary location to store results from parallel workers!
-        try:
-            os.mkdir(folder)
-        except FileExistsError:
-            pass
+        if torch.numel(n_shots) == 1:
+            rtm_n_img = np.zeros((image_orig.shape[0], 1, self.H, self.W))
+        else:
+            folder = '/tmp/joblib_memmap' #temporary location to store results from parallel workers!
+            try:
+                os.mkdir(folder)
+            except FileExistsError:
+                pass
 
-        output_filename_memmap = os.path.join(folder, 'output_memmap')
+            output_filename_memmap = os.path.join(folder, 'output_memmap')
 
-        rtm_n_img = np.memmap(output_filename_memmap, dtype=np.float32, 
-                   shape=(image_orig.shape[0], 1, self.H, self.W), mode='w+')
+            rtm_n_img = np.memmap(output_filename_memmap, dtype=np.float32, 
+                    shape=(image_orig.shape[0], 1, self.H, self.W), mode='w+')
 
-        def get_single_rtm_img(i, n, path, slices, img_idx, output):
+        def get_single_rtm_img(i, n, path, slices, img_idx, output, memmap=True):
             """
             Edits rtm_n_img[i] to hold an rtm_n image.
             Args:
@@ -168,23 +171,28 @@ class RTM_N(TensorDataset):
 
             new_x = filterImage(image_k, exp['vel'], 0.95, 0.03, N=n, rescale=True, laplace=False).T
 
-            output[i] = np.expand_dims(new_x, axis=0)
+            if memmap:
+                output[i] = np.expand_dims(new_x, axis=0)
+            else:
+                return np.expand_dims(new_x, axis=0)
 
         if torch.numel(n_shots) == 1:
-            get_single_rtm_img(0, n_shots.item(), self.path, self.slices, image_index, rtm_n_img) 
-
+            rtm_n_img = get_single_rtm_img(0, n_shots.item(), self.path, self.slices, image_index, None, memmap=False) 
+            rtm_n_img = torch.from_numpy(rtm_n_img)
         else:
             Parallel(n_jobs=-1)(delayed(get_single_rtm_img)(i, n, self.path, self.slices, image_index, rtm_n_img) \
                 for i, n in enumerate(n_shots.squeeze().tolist()))
 
-        #convert the results to torch with all the correct attributes and transforms
-        rtm_n_img = torch.from_numpy(rtm_n_img)
+            #convert the results to torch with all the correct attributes and transforms
+            rtm_n_img = torch.from_numpy(rtm_n_img)
+
         rtm_n_img = self.transform(rtm_n_img)
 
-        try:
-            shutil.rmtree(folder)
-        except:  # noqa
-            print('Could not clean-up automatically.')
+        if torch.numel(n_shots) > 1:
+            try:
+                shutil.rmtree(folder)
+            except:  # noqa
+                print('Could not clean-up automatically.')
 
         return rtm_n_img
     

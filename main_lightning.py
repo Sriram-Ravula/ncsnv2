@@ -2,15 +2,18 @@ import argparse
 import traceback
 import time
 import shutil
+import logging
 import yaml
 import sys
 import os
 import torch
 import numpy as np
 import copy
+
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint, DeviceStatsMonitor
+from pytorch_lightning.callbacks import ModelCheckpoint, GPUStatsMonitor
+
 from datasets.rtm_n_lightning import RTMDataModule
 from models.ncsnv2_lightning import NCSNv2_Lightning
 
@@ -42,74 +45,49 @@ def parse_args_and_config():
     new_config = dict2namespace(config)
 
     tb_path = os.path.join(args.exp, 'tensorboard', args.doc)
+    sample_path = os.path.join(args.log_path, 'samples')
 
-    if not args.test and not args.sample and not args.fast_fid:
-        if not args.resume_training:
-            if os.path.exists(args.log_path):
-                overwrite = False
-                if args.ni:
-                    overwrite = True
-                else:
-                    response = input("Folder already exists. Overwrite? (Y/N)")
-                    if response.upper() == 'Y':
-                        overwrite = True
-
-                if overwrite:
-                    shutil.rmtree(args.log_path)
-                    shutil.rmtree(tb_path)
-                    os.makedirs(args.log_path)
-                    if os.path.exists(tb_path):
-                        shutil.rmtree(tb_path)
-                else:
-                    print("Folder exists. Program halted.")
-                    sys.exit(0)
+    if not args.resume_training:
+        if os.path.exists(args.log_path):
+            overwrite = False
+            if args.ni:
+                overwrite = True
             else:
+                response = input("Folder already exists. Overwrite? (Y/N)")
+                if response.upper() == 'Y':
+                    overwrite = True
+
+            if overwrite:
+                shutil.rmtree(args.log_path)
                 os.makedirs(args.log_path)
-
-            with open(os.path.join(args.log_path, 'config.yml'), 'w') as f:
-                yaml.dump(new_config, f, default_flow_style=False)
-
-    else:
-        if args.sample:
-            os.makedirs(os.path.join(args.exp, 'image_samples'), exist_ok=True)
-            args.image_folder = os.path.join(args.exp, 'image_samples', args.image_folder)
-            if not os.path.exists(args.image_folder):
-                os.makedirs(args.image_folder)
+                os.makedirs(sample_path)
+                if os.path.exists(tb_path):
+                    shutil.rmtree(tb_path)
             else:
-                overwrite = False
-                if args.ni:
-                    overwrite = True
-                else:
-                    response = input("Image folder already exists. Overwrite? (Y/N)")
-                    if response.upper() == 'Y':
-                        overwrite = True
+                print("Folder exists. Program halted.")
+                sys.exit(0)
+        else:
+            os.makedirs(args.log_path)
+            os.makedirs(sample_path)
+            os.makedirs(tb_path)
 
-                if overwrite:
-                    shutil.rmtree(args.image_folder)
-                    os.makedirs(args.image_folder)
-                else:
-                    print("Output image folder exists. Program halted.")
-                    sys.exit(0)
+        with open(os.path.join(args.log_path, 'config.yml'), 'w') as f:
+            yaml.dump(new_config, f, default_flow_style=False)
+    
+    # setup logger
+    level = getattr(logging, args.verbose.upper(), None)
+    if not isinstance(level, int):
+        raise ValueError('level {} not supported'.format(args.verbose))
 
-        elif args.fast_fid:
-            os.makedirs(os.path.join(args.exp, 'fid_samples'), exist_ok=True)
-            args.image_folder = os.path.join(args.exp, 'fid_samples', args.image_folder)
-            if not os.path.exists(args.image_folder):
-                os.makedirs(args.image_folder)
-            else:
-                overwrite = False
-                if args.ni:
-                    overwrite = False
-                else:
-                    response = input("Image folder already exists. \n "
-                                     "Type Y to delete and start from an empty folder?\n"
-                                     "Type N to overwrite existing folders (Y/N)")
-                    if response.upper() == 'Y':
-                        overwrite = True
-
-                if overwrite:
-                    shutil.rmtree(args.image_folder)
-                    os.makedirs(args.image_folder)
+    handler1 = logging.StreamHandler()
+    handler2 = logging.FileHandler(os.path.join(args.log_path, 'stdout.txt'))
+    formatter = logging.Formatter('%(levelname)s - %(filename)s - %(asctime)s - %(message)s')
+    handler1.setFormatter(formatter)
+    handler2.setFormatter(formatter)
+    logger = logging.getLogger()
+    logger.addHandler(handler1)
+    logger.addHandler(handler2)
+    logger.setLevel(level)
 
     # add device
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
@@ -126,7 +104,6 @@ def parse_args_and_config():
 
     return args, new_config
 
-
 def dict2namespace(config):
     namespace = argparse.Namespace()
     for key, value in config.items():
@@ -137,14 +114,14 @@ def dict2namespace(config):
         setattr(namespace, key, new_value)
     return namespace
 
-def trainer_args(config):
+def grab_trainer_args(config):
     args = argparse.Namespace(max_epochs = config.training.n_epochs, 
                      log_save_interval = 1,
                      row_log_interval = 1,
                      check_val_every_n_epoch = 1,
                      num_nodes = 1,
                      gpus = 4,
-                     workers = 8,
+                     workers = config.data.num_workers,
                      distributed_backend = "ddp")
 
     return args
@@ -157,18 +134,16 @@ def main():
     logging.info("Config =")
     print(">" * 80)
     config_dict = copy.copy(vars(config))
-    if not args.test and not args.sample and not args.fast_fid:
-        del config_dict['tb_logger']
+
     print(yaml.dump(config_dict, default_flow_style=False))
     print("<" * 80)
 
     dataset = RTMDataModule(path="/scratch/08269/rstone/full_rtm_8048",
                             config=config)
-    dataset.setup()
     model = NCSNv2_Lightning(args=args, config=config)
 
     logger = TensorBoardLogger(
-        save_dir=tb_path,
+        save_dir=os.path.join(args.exp, 'tensorboard', args.doc),
         version=args.exp,
         name='NCSNv2_TRAINING'
     )
@@ -176,11 +151,10 @@ def main():
     trainer_args = grab_trainer_args(config)
     trainer = Trainer.from_argparse_args(trainer_args, 
                                          logger=logger, 
-                                         reload_dataloaders_every_n_epochs=1, 
                                          callbacks=[ModelCheckpoint(save_top_k=-1, 
-                                                                    every_n_epochs=5,
+                                                                    period=5,
                                                                     verbose=True), 
-                                                    DeviceStatsMonitor()])
+                                                    GPUStatsMonitor()])
     trainer.fit(model, datamodule=dataset)
 
     return 0
