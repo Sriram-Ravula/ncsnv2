@@ -41,7 +41,7 @@ class NCSNRunner():
         #Grab the dataset and set up the loaders
         dataset, test_dataset = get_dataset(self.args, self.config)
         dataloader = DataLoader(dataset, batch_size=self.config.training.batch_size, shuffle=True,
-                                num_workers=self.config.data.num_workers)
+                                num_workers=self.config.data.num_workers, drop_last=True)
         test_loader = DataLoader(test_dataset, batch_size=self.config.training.batch_size, shuffle=True,
                                  num_workers=self.config.data.num_workers, drop_last=True) #drop_last removes the last incomplete batch that doesn't fill batch size
         
@@ -114,6 +114,7 @@ class NCSNRunner():
                 total_n_shots_count = torch.zeros(n_shots.numel()).float().to(self.config.device) 
                 sigmas_running = get_sigmas(self.config)
 
+        #NOTE ignore this block
         if self.config.training.log_all_sigmas:
             ### Commented out training time logging to save time.
             test_loss_per_sigma = [None for _ in range(len(sigmas))]
@@ -153,22 +154,27 @@ class NCSNRunner():
 
         #main training loop
         for epoch in tqdm.tqdm(range(start_epoch, self.config.training.n_epochs)):
-            for i, (X, y) in enumerate(dataloader):
+            for i, batch in enumerate(dataloader):
                 score.train()
                 step += 1
+
+                if self.config.data.dataset == 'RTM_N':
+                    X, y, flipped = batch
+                else:
+                    X, y = batch
 
                 X = X.to(self.config.device)
                 X = data_transform(self.config, X)
 
                 if self.config.model.sigma_dist == 'rtm':
-                    loss = rtm_score_estimation(score, (X, y), n_shots, sigmas, dataset, 
+                    loss = rtm_score_estimation(score, (X, y, flipped), n_shots, sigmas, dataset, 
                                                 dynamic_lambdas=False, labels=None, hook=hook)
                 elif self.config.model.sigma_dist == 'rtm_dynamic':
-                    loss, sum_mses_list, n_shots_count = rtm_score_estimation(score, (X, y), n_shots, sigmas, dataset, 
+                    loss, sum_mses_list, n_shots_count = rtm_score_estimation(score, (X, y, flipped), n_shots, sigmas, dataset, 
                                                                                 dynamic_lambdas=True, labels=None, hook=hook)
                     #update the running sum of lambdas/MSEs and counts of each n_shots
-                    total_n_shots_count = total_n_shots_count + n_shots_count 
-                    sigmas_running = sigmas_running + sum_mses_list
+                    total_n_shots_count += n_shots_count 
+                    sigmas_running += sum_mses_list
                 else:
                     loss = anneal_dsm_score_estimation(score, X, sigmas, None,
                                                     self.config.training.anneal_power,
@@ -192,30 +198,51 @@ class NCSNRunner():
 
                 #every 100 steps, use the EMA parameters to calc test loss
                 if step % 100 == 0:
+                    #if dynamically calculating the lambda/sigma values, update the list with mean values
+                    #also update the model values of sigma  
+                    if self.config.model.sigma_dist == 'rtm_dynamic':
+                        sigmas = sigmas_running / total_n_shots_count #update the master sigmas list
+                        score.module.set_sigmas(sigmas)
+
+                    #grab ema or set train model as test model
                     if self.config.model.ema:
                         test_score = ema_helper.ema_copy(score)
                     else:
                         test_score = score
-
                     test_score.eval()
+
+                    #grab a batch of test data
                     try:
-                        test_X, test_y = next(test_iter)
+                        test_batch = next(test_iter)
                     except StopIteration:
                         test_iter = iter(test_loader)
-                        test_X, test_y = next(test_iter)
+                        test_batch = next(test_iter)
+                    
+                    if self.config.data.dataset == 'RTM_N':
+                        test_X, test_y, test_flipped = test_batch
+                    else:
+                        test_X, test_y = test_batch
 
                     test_X = test_X.to(self.config.device)
                     test_X = data_transform(self.config, test_X)
 
+                    #calculate the test loss
                     with torch.no_grad():
-                        test_dsm_loss = anneal_dsm_score_estimation(test_score, test_X, sigmas, None,
-                                                                    self.config.training.anneal_power,
-                                                                    hook=test_hook)
-                        tb_logger.add_scalar('test_loss', test_dsm_loss, global_step=step)
-                        test_tb_hook()
-                        logging.info("step: {}, test_loss: {}".format(step, test_dsm_loss.item()))
+                        if self.config.model.sigma_dist == 'rtm':
+                            test_loss = rtm_score_estimation(test_score, (test_X, test_y, test_flipped), n_shots, sigmas, test_dataset, 
+                                                        dynamic_lambdas=False, labels=None, hook=hook, val=True)
+                        elif self.config.model.sigma_dist == 'rtm_dynamic':
+                            test_loss, _, _ = rtm_score_estimation(test_score, (test_X, test_y, test_flipped), n_shots, sigmas, test_dataset, 
+                                                                    dynamic_lambdas=True, labels=None, hook=hook, val=True)
+                        else:
+                            test_loss = anneal_dsm_score_estimation(test_score, test_X, sigmas, None,
+                                                            self.config.training.anneal_power, hook)
 
-                        del test_score
+                    tb_logger.add_scalar('test_loss', test_loss, global_step=step)
+                    test_tb_hook()
+                    logging.info("step: {}, test_loss: {}".format(step, test_loss.item()))
+
+                    del test_score
 
                 #every snapshot_freq iterations, save the weights and sample if desired
                 if step % self.config.training.snapshot_freq == 0:
@@ -227,6 +254,7 @@ class NCSNRunner():
                         score.module.set_sigmas(sigmas)
                         np.save(os.path.join(self.args.log_sample_path, 'lambdas_{}.npy'.format(step)), sigmas.cpu().numpy())
 
+                    #save the training state
                     states = [
                         score.state_dict(),
                         optimizer.state_dict(),
@@ -241,11 +269,11 @@ class NCSNRunner():
 
                     #Checkpoint sampling!
                     if self.config.training.snapshot_sampling:
+                        #grab ema or set train model as test model
                         if self.config.model.ema:
                             test_score = ema_helper.ema_copy(score)
                         else:
                             test_score = score
-
                         test_score.eval()
 
                         ## Different part from NeurIPS 2019.

@@ -5,6 +5,8 @@ import tqdm
 import os
 import time
 import shutil
+import torch.nn.functional as F
+import random
 
 from rtm_utils import load_exp, load_npy, filterImage, laplaceFilter
 from joblib import Parallel, delayed
@@ -18,10 +20,12 @@ class RTM_N(TensorDataset):
         - 
         - preprocesses the images to stitch together "n-shots" when loaded at train time
     """
-    def __init__(self, path, transform=None, debug=True, load_path=None):
+    def __init__(self, path, transform=None, debug=True, load_path=None, manual_hflip=True):
         self.debug = debug
         self.path = path
         self.transform = transform
+
+        self.manual_hflip = manual_hflip
 
         if load_path is None:
             self.slices = []
@@ -62,10 +66,18 @@ class RTM_N(TensorDataset):
     def __getitem__(self, index):
         sample = self.tensors[index]
 
-        if self.transform:
+        if self.transform is not None:
             sample = self.transform(sample)
+        
+        if self.manual_hflip:
+            hflip = random.random() < 0.5
+            if hflip:
+                sample = F.hflip(sample)
+            flipped = True
+        else:
+            flipped = False
 
-        return sample, index
+        return sample, index, flipped
 
     def __build_dataset__(self):
         """
@@ -124,13 +136,13 @@ class RTM_N(TensorDataset):
         Given an image index and number of shots per image, gather and preprocess an RTM_n image.
 
         Args:
-            input_sample: (X, y) pair of rtm_243 image and its index. (tensor:[N, 1, H, W], list:[N])
+            input_sample: (X, y, flipped) pair of rtm_243 image, index, and whether flipped. (tensor:[N, 1, H, W], list:[N], list:[N])
             n_shots: the number of shots we want to select for each rtm_n image corresponding to the input. Tensor:[N]
             
         Returns:
             rtm_n_img: a tensor with same dimensions as X comprising rtm_n images. tensor:[N, 1, H, W]
         """
-        image_orig, image_index = input_sample #the RTM_243 image and its index
+        image_orig, image_index, flipped = input_sample #the RTM_243 image and its index
 
         if torch.numel(n_shots) == 1:
             rtm_n_img = np.zeros((image_orig.shape[0], 1, self.H, self.W))
@@ -182,11 +194,14 @@ class RTM_N(TensorDataset):
         else:
             Parallel(n_jobs=-1)(delayed(get_single_rtm_img)(i, n, self.path, self.slices, image_index, rtm_n_img) \
                 for i, n in enumerate(n_shots.squeeze().tolist()))
-
-            #convert the results to torch with all the correct attributes and transforms
+                
             rtm_n_img = torch.from_numpy(rtm_n_img)
 
+        #transform and flip if appropriate
         rtm_n_img = self.transform(rtm_n_img)
+        for i in range(rtm_n_img.shape[0]):
+            if flipped[i]:
+                rtm_n_img[i] = F.hflip(rtm_n_img[i])
 
         if torch.numel(n_shots) > 1:
             try:
@@ -196,8 +211,24 @@ class RTM_N(TensorDataset):
 
         return rtm_n_img
     
-    def load(self, load_path):
-        """
-        This function is meant to be overriden by a child class
-        """
-        return None, None
+    def save(self, path):
+        """Function for saving the compiled 243-shot tensor images and slice IDs.
+           Useful for preparing data on a single process"""
+        try:
+            os.mkdir(path)
+        except FileExistsError:
+            pass
+
+        torch.save(self.tensors, os.path.join(path, '243_images.pt'))
+
+        with open(os.path.join(path, 'slices.pickle'), 'wb') as f:
+            pickle.dump(self.slices, f, protocol=pickle.HIGHEST_PROTOCOL)
+    
+    def load(self, path):
+        out_tensors = torch.load(os.path.join(path, '243_images.pt'))
+
+        with open(os.path.join(path, 'slices.pickle'), 'rb') as f:
+            out_slices = pickle.load(f)
+        
+        print("Successfully loaded images and slice ids")
+        return out_tensors, out_slices

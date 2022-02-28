@@ -18,11 +18,11 @@ def anneal_dsm_score_estimation(scorenet, samples, sigmas, labels=None, anneal_p
 
     return loss.mean(dim=0)
 
-def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, dynamic_lambdas=False, labels=None, hook=None):
+def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, dynamic_lambdas=False, labels=None, hook=None, val=False):
     """
     Args:
         scorenet: s_{theta} the score-based network
-        samples: (X, y) pairs where y is for identifying the RTM image index. (Tensor:[N, C, H, W], list:[N]).
+        samples: (X, y, flipped) pair of rtm_243 image, index, and whether flipped. (tensor:[N, 1, H, W], list:[N], list:[N])
         n_shots: The list of n_shots_i that we are using (e.g. [1, 2, 5, 10, 50, 100]). Torch tensor [nshots].
         lambdas_list: The list of lambda(n_shots_i) values to scale the loss by. Torch Tensor [nshots].
         rtm_dataset: The dataset to use when gathering the RTM_n images corresponding to the input.
@@ -60,13 +60,12 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, 
         #now we want to keep a running average of the lambda values for each of the n_shot_i values
         #we want a list of length [nshots] with each entry having the sum of all MSEs in this iteration corresponding to that n_shot_i
         #we also want a list of length [nshots] where we count the number of times we encounter each n_shot_i value
-
         sum_mses_list = torch.zeros(n_shots.numel()).float().to(samples[0].device)
         n_shots_count = torch.zeros(n_shots.numel()).float().to(samples[0].device)
 
         for i, shot_idx in enumerate(labels.cpu().numpy().squeeze()):
-            sum_mses_list[shot_idx] = sum_mses_list[shot_idx] + lambda_n[i].item()
-            n_shots_count[shot_idx] = n_shots_count[shot_idx] + 1  
+            sum_mses_list[shot_idx] += lambda_n[i].item()
+            n_shots_count[shot_idx] += 1  
 
         lambda_n = lambda_n.view(samples[0].shape[0], *([1] * len(samples[0].shape[1:])))                       
 
@@ -75,7 +74,7 @@ def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, 
 
     #(6) grab the network output s_theta(x~, lambda_i) / lambda(n_shots_i)
     #scores = [N, C, H, W]
-    if dynamic_lambdas:
+    if dynamic_lambdas and not val:
         #if dynamic, pass the measured lambda values to the score network to scale it
         scores = scorenet(perturbed_samples, labels, lambda_n)
     else:

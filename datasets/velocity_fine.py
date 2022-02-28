@@ -4,14 +4,7 @@ import torch
 
 class Velocity(TensorDataset):
     def __init__(self, path, transform=None):
-        self.tensors = np.load(path)
-
-        mini = np.min(self.tensors)
-        maxi = np.max(self.tensors)
-        self.tensors = (self.tensors - mini) / (maxi - mini)
-
-        self.tensors = torch.from_numpy(self.tensors).unsqueeze(1).float()
-
+        self.tensors = torch.load(path)
         self.transform = transform
 
     def __len__(self):
@@ -24,3 +17,4 @@ class Velocity(TensorDataset):
             sample = self.transform(sample)
 
         return sample, index
+        

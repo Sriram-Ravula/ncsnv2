@@ -148,7 +148,7 @@ def get_dataset(args, config):
             transforms.RandomHorizontalFlip(p=0.5)
         ])
 
-        dataset = Velocity(path="/scratch/04703/sravula/experiments/datasets/rtm_243.npy", transform=tran_transform)
+        dataset = Velocity(path="/scratch/04703/sravula/experiments/datasets/rtm_n/243_images.pt", transform=tran_transform)
 
         num_items = len(dataset)
         indices = list(range(num_items))
