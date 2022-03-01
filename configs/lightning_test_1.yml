@@ -13,6 +13,7 @@ sampling:
   final_only: true
   denoise: true #whether to add \sigma^2 * s_theta(x_T, \sigma_T) to the final output
   add_noise: false #whether to add stochastic noise during Langevin dynamics (false means MAP estimation)
+  shot_idx: 4 #the index of the n_shots to use when initializing samples 
 
 data:
   dataset: "RTM_N"

@@ -65,7 +65,7 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
     with torch.no_grad():
         for c, sigma in enumerate(sigmas):
             #create the input to NCSN that tells it which noise level we are on
-            labels = torch.ones(x_mod.shape[0]).type_as(x_mod) * c 
+            labels = torch.ones(x_mod.shape[0], device=x_mod.device) * c 
             labels = labels.long()
 
             step_size = step_lr * (sigma / sigmas[-1]) ** 2

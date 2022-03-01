@@ -98,8 +98,32 @@ class RTM_N(TensorDataset):
         if self.manual_hflip:
             hflip = random.random() < 0.5
             if hflip:
-                rtm243_sample = self.flip_image(rtm243_sample)
-                n_shot_sample = self.flip_image(n_shot_sample)
+                rtm243_sample = F.hflip(rtm243_sample)
+                n_shot_sample = F.hflip(n_shot_sample)
+
+        return rtm243_sample, index, n_shot_sample, shot_idx
+    
+    def get_samples(self, index=None, shot_idx=None, flip=False):
+        if index is None:
+            index = np.random.choice(self.tensors.size(0))
+        if shot_idx is None:
+            shot_idx = np.random.choice(self.n_shots.numel())
+
+        rtm243_sample = self.tensors[index]
+
+        if self.transform is not None:
+            rtm243_sample = self.transform(rtm243_sample)
+
+        used_nshots = self.n_shots[shot_idx].item()
+
+        n_shot_sample = grab_single_rtm_n_img(index, used_nshots)
+
+        #perform a random horizontal flip, making sure both images have the same flip
+        if flip:
+            hflip = random.random() < 0.5
+            if hflip:
+                rtm243_sample = F.hflip(rtm243_sample)
+                n_shot_sample = F.hflip(n_shot_sample)
 
         return rtm243_sample, index, n_shot_sample, shot_idx
 
