@@ -82,19 +82,19 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
                 #Langevin update step
                 x_mod = x_mod + step_size*grad + np.sqrt(step_size * 2)*noise   
 
-                #calculate l2 norms of gradient (score)m additive noise, and image for logging
-                grad_norm = torch.norm(grad.view(grad.shape[0], -1), dim=-1).mean()
-                noise_norm = torch.norm(noise.view(noise.shape[0], -1), dim=-1).mean()
-                image_norm = torch.norm(x_mod.view(x_mod.shape[0], -1), dim=-1).mean()
-
-                #calc snr as scaled version of [||s(x, \sigma_i)|| / ||z_t||] and mean of score for logging
-                snr = np.sqrt(step_size / 2.) * grad_norm / noise_norm
-                grad_mean_norm = torch.norm(grad.mean(dim=0).view(-1)) ** 2 * sigma ** 2
-
                 if not final_only:
                     images.append(x_mod)
 
                 if verbose:
+                    #calculate l2 norms of gradient (score)m additive noise, and image for logging
+                    grad_norm = torch.norm(grad.view(grad.shape[0], -1), dim=-1).mean()
+                    noise_norm = torch.norm(noise.view(noise.shape[0], -1), dim=-1).mean()
+                    image_norm = torch.norm(x_mod.view(x_mod.shape[0], -1), dim=-1).mean()
+
+                    #calc snr as scaled version of [||s(x, \sigma_i)|| / ||z_t||] and mean of score for logging
+                    snr = np.sqrt(step_size / 2.) * grad_norm / noise_norm
+                    grad_mean_norm = torch.norm(grad.mean(dim=0).view(-1)) ** 2 * sigma ** 2
+
                     print("level: {}, step_size: {:.3f}, grad_norm: {:.3f}, image_norm: {:.3f}, snr: {:.3f}, grad_mean_norm: {:.3f}".format(
                         c, step_size, grad_norm.item(), image_norm.item(), snr.item(), grad_mean_norm.item()))
 

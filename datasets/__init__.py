@@ -153,10 +153,11 @@ def get_dataset(args, config):
         num_items = len(dataset)
         indices = list(range(num_items))
         random_state = np.random.get_state()
-        np.random.seed(2240)
+        np.random.seed(2022)
         np.random.shuffle(indices)
         np.random.set_state(random_state)
-        train_indices, test_indices = indices[:int(num_items * 0.9)], indices[int(num_items * 0.9):]
+
+        train_indices, test_indices = indices[:int(num_items * 0.975)], indices[int(num_items * 0.975):]
         test_dataset = Subset(dataset, test_indices)
         dataset = Subset(dataset, train_indices)
     
@@ -166,15 +167,24 @@ def get_dataset(args, config):
                 interpolation=transforms.InterpolationMode.BICUBIC),    #no horizontal flip - would affect RTM_n image!
         ])
 
-        dataset = RTM_N(path="/scratch/08269/rstone/full_rtm_8048", transform=tran_transform)
+        n_shots = np.asarray(config.model.n_shots).squeeze()
+        n_shots = torch.from_numpy(n_shots)
+        #make sure it has dimension > 0 if it is a singleton (useful for indexing)
+        if n_shots.numel() == 1:
+            n_shots = torch.unsqueeze(n_shots, 0)
+
+        dataset = RTM_N(path="/scratch/08269/rstone/full_rtm_8048", transform=tran_transform, \
+                        load_path="/scratch/04703/sravula/experiments/datasets/rtm_n", manual_hflip=config.data.random_flip,\
+                        n_shots=n_shots)
 
         num_items = len(dataset)
         indices = list(range(num_items))
         random_state = np.random.get_state()
-        np.random.seed(2240)
+        np.random.seed(2022)
         np.random.shuffle(indices)
         np.random.set_state(random_state)
-        train_indices, test_indices = indices[:int(num_items * 0.9)], indices[int(num_items * 0.9):]
+
+        train_indices, test_indices = indices[:int(num_items * 0.975)], indices[int(num_items * 0.975):]
         test_dataset = Subset(dataset, test_indices)
         dataset = Subset(dataset, train_indices)
 

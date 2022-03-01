@@ -97,7 +97,6 @@ class NCSNRunner():
             print("\n\nMEMORY ALLOCATED: " + mem_use)
             print("MEMORY RESERVED: " + mem_res + "\n\n")
 
-
         #grab all L noise levels
         #for RTM_N this is the lambdas
         sigmas = get_sigmas(self.config).to(self.config.device)

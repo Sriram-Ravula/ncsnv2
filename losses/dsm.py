@@ -1,7 +1,8 @@
 import torch
 from datasets.rtm_n import RTM_N
 
-def anneal_dsm_score_estimation(scorenet, samples, sigmas, labels=None, anneal_power=2., hook=None):
+def anneal_dsm_score_estimation(scorenet, batch, sigmas, labels=None, anneal_power=2., hook=None):
+    samples, _ = batch
     if labels is None:
         labels = torch.randint(0, len(sigmas), (samples.shape[0],), device=samples.device)
     used_sigmas = sigmas[labels].view(samples.shape[0], *([1] * len(samples.shape[1:]))) #grab the correct sigma_i value
@@ -16,7 +17,58 @@ def anneal_dsm_score_estimation(scorenet, samples, sigmas, labels=None, anneal_p
     if hook is not None:
         hook(loss, labels)
 
-    return loss.mean(dim=0)
+    return loss.sum() #loss.mean(dim=0)
+
+def rtm_loss(scorenet, batch, n_shots, sigmas, dynamic_sigmas=False, anneal_power=2., val=False):
+    """
+    Expects batch to consist of (RTM243, slice_id, RTM_N, N)
+    """
+    X_243, slice_id, X_N, shot_idx = batch
+    
+    #(1) form the targets 
+    #targets has siz [N, C, H, W]
+    target = X_243 - X_N #(x_243 - x_{n_shots_i})
+    
+    #(2) grab the correct sigma(shot_idx) val
+    #sigma_n has size [N]
+    if dynamic_sigmas:
+        #this gives us sqrt((1 / H*W*C) ||x_243 - x_N||_2^2), i.e. the RMSE per sample
+        sigma_n = torch.sqrt(torch.mean(target ** 2, dim=[1, 2, 3])) 
+
+        sum_mses_list = torch.zeros(n_shots.numel(), device=X_243.device)
+        n_shots_count = torch.zeros(n_shots.numel(), device=X_243.device)
+
+        for i, idx in enumerate(shot_idx):
+            sum_mses_list[idx] += sigma_n[i].item()
+            n_shots_count[idx] += 1
+
+        sigma_n = sigma_n.view(X_243.shape[0], *([1] * len(X_243.shape[1:])))                 
+    else:
+        sigma_n = sigmas[shot_idx].view(X_243.shape[0], *([1] * len(X_243.shape[1:])))
+    
+    #(3) Scale the target
+    target = target / (sigma_n ** 2)
+    target = target.view(target.shape[0], -1)
+
+    #(4) grab the network output s_theta(x~, sigma_i) / sigma(n_shots_i)
+    #labels has size [N] (batch size)
+    #scores = [N, C, H, W]
+    labels = torch.tensor(shot_idx, device=X_243.device).long()
+    if dynamic_sigmas and not val:
+        #if dynamic, pass the measured sigma values to the score network to scale it
+        scores = scorenet(X_N, labels, sigma_n)
+    else:
+        scores = scorenet(X_N, labels, None) 
+    scores = scores.view(scores.shape[0], -1)
+    
+    #(5) calculate the loss
+    loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * sigma_n.squeeze() ** anneal_power
+
+    if dynamic_sigmas:
+        #return loss.mean(dim=0), sum_mses_list, n_shots_count 
+        return loss.sum(), sum_mses_list, n_shots_count
+    else:
+        return loss.sum() #loss.mean(dim=0)
 
 def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, dynamic_lambdas=False, labels=None, hook=None, val=False):
     """

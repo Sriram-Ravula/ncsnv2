@@ -20,12 +20,17 @@ class RTM_N(TensorDataset):
         - 
         - preprocesses the images to stitch together "n-shots" when loaded at train time
     """
-    def __init__(self, path, transform=None, debug=True, load_path=None, manual_hflip=True):
+    def __init__(self, path, transform=None, debug=True, load_path=None, manual_hflip=True, n_shots=None):
         self.debug = debug
         self.path = path
         self.transform = transform
+        self.n_shots = n_shots
 
         self.manual_hflip = manual_hflip
+
+        if self.debug:
+            print("Starting to build dataset........")
+            tic = time.time()
 
         if load_path is None:
             self.slices = []
@@ -59,25 +64,44 @@ class RTM_N(TensorDataset):
         else:
             self.tensors, self.slices = self.load(load_path)
             self.H, self.W = self.tensors.shape[-2:]
+        
+        if self.debug:
+            toc = time.time()
+            print("TIME ELAPSED: ", str(toc - tic))
+            print("Finished building dataset!")
 
     def __len__(self):
         return self.tensors.size(0)
 
     def __getitem__(self, index):
-        sample = self.tensors[index]
+        rtm243_sample = self.tensors[index]
 
         if self.transform is not None:
-            sample = self.transform(sample)
+            rtm243_sample = self.transform(rtm243_sample)
         
+        # if self.manual_hflip:
+        #     hflip = random.random() < 0.5
+        #     if hflip:
+        #         sample = F.hflip(sample)
+        #     flipped = True
+        # else:
+        #     flipped = False
+
+        # return sample, index, flipped
+
+        shot_idx = np.random.randint(low=0, high=self.n_shots.numel(), size=1)[0]
+        used_nshots = self.n_shots[shot_idx].item()
+
+        n_shot_sample = grab_single_rtm_n_img(index, used_nshots)
+
+        #perform a random horizontal flip, making sure both images have the same flip
         if self.manual_hflip:
             hflip = random.random() < 0.5
             if hflip:
-                sample = F.hflip(sample)
-            flipped = True
-        else:
-            flipped = False
+                rtm243_sample = self.flip_image(rtm243_sample)
+                n_shot_sample = self.flip_image(n_shot_sample)
 
-        return sample, index, flipped
+        return rtm243_sample, index, n_shot_sample, shot_idx
 
     def __build_dataset__(self):
         """
@@ -113,16 +137,7 @@ class RTM_N(TensorDataset):
 
             output[i] = np.expand_dims(rtm243_img, axis=0) #expand to [1, H, W]
 
-        if self.debug:
-            print("Starting to build dataset........")
-            tic = time.time()
-
         Parallel(n_jobs=-1)(delayed(grab_and_process_imgs)(idx, sid, image_dataset) for idx, sid in enumerate(self.slices))
-
-        if self.debug:
-            toc = time.time()
-            print("TIME ELAPSED: ", str(toc - tic))
-            print("Finished building dataset!")
 
         try:
             shutil.rmtree(folder)
@@ -130,6 +145,50 @@ class RTM_N(TensorDataset):
             print('Could not clean-up automatically.')
         
         return torch.from_numpy(image_dataset).float()
+    
+    def grab_single_rtm_n_img(self, idx, n_shots):
+        """idx and n_shots are ints.
+            Parallelize by shot instead of by batch
+        """
+        shots_idxs = np.random.choice(243, size=int(n_shots), replace=False) #random indices of n_shots to grab
+        exp = load_exp(os.path.join(self.path, self.slices[idx])) #dictionary of slice information
+        shot_paths = [s for s in exp['shots'] if int(os.path.basename(s).split("-")[1][:-4]) in shots_idxs] #individual shots
+
+        #TODO check if adding the idx to the end is enough for mutex!
+        folder = '/tmp/joblib_memmap' + str(idx) #temporary location to store results from parallel workers!
+        try:
+            os.mkdir(folder)
+        except FileExistsError:
+            pass
+
+        output_filename_memmap = os.path.join(folder, 'output_memmap')
+        rtm_n_img = np.memmap(output_filename_memmap, dtype=np.float32, 
+                shape=(n_shots, ) + exp['vel'].shape, mode='w+') #[n_shots, W, H]
+
+        def get_single_shot_img(i, spth, output):
+            """
+            Edits rtm_n_img[i] to hold an rtm_n image.
+            Args:
+                i: the index of the output to place the rtm single shot image
+                spth: path to the shot
+                output: the final array where we store the rtm_n images
+            """
+            output[i] = laplaceFilter(load_npy(spth)[20:-20, 20:-20])
+        
+        Parallel(n_jobs=-1)(delayed(get_single_shot_img)(i, shots_paths[i], rtm_n_img) for i in range(n_shots))
+
+        out_img = np.sum(rtm_n_img, axis=0) #change from [n_shots, W, H] --> [W, H] by summing along shot axis
+        out_img = filterImage(out_img, exp['vel'], 0.95, 0.03, N=n_shots, rescale=True, laplace=False).T #[H, W]
+
+        out_img = torch.from_numpy(out_img).unsqueeze(0).float() #[1, H, W]
+        out_img = self.transform(out_img)
+
+        try:
+            shutil.rmtree(folder)
+        except:  # noqa
+            print('Could not clean-up automatically.')
+
+        return out_img
     
     def grab_rtm_image(self, input_sample, n_shots):
         """
@@ -142,7 +201,8 @@ class RTM_N(TensorDataset):
         Returns:
             rtm_n_img: a tensor with same dimensions as X comprising rtm_n images. tensor:[N, 1, H, W]
         """
-        image_orig, image_index, flipped = input_sample #the RTM_243 image and its index
+        # image_orig, image_index, flipped = input_sample
+        image_orig, image_index = input_sample
 
         if torch.numel(n_shots) == 1:
             rtm_n_img = np.zeros((image_orig.shape[0], 1, self.H, self.W))
@@ -190,18 +250,15 @@ class RTM_N(TensorDataset):
 
         if torch.numel(n_shots) == 1:
             rtm_n_img = get_single_rtm_img(0, n_shots.item(), self.path, self.slices, image_index, None, memmap=False) 
-            rtm_n_img = torch.from_numpy(rtm_n_img)
         else:
             Parallel(n_jobs=-1)(delayed(get_single_rtm_img)(i, n, self.path, self.slices, image_index, rtm_n_img) \
                 for i, n in enumerate(n_shots.squeeze().tolist()))
-                
-            rtm_n_img = torch.from_numpy(rtm_n_img)
-
-        #transform and flip if appropriate
+        
+        rtm_n_img = torch.from_numpy(rtm_n_img)
         rtm_n_img = self.transform(rtm_n_img)
-        for i in range(rtm_n_img.shape[0]):
-            if flipped[i]:
-                rtm_n_img[i] = F.hflip(rtm_n_img[i])
+        # for i in range(rtm_n_img.shape[0]):
+        #     if flipped[i]:
+        #         rtm_n_img[i] = F.hflip(rtm_n_img[i])
 
         if torch.numel(n_shots) > 1:
             try:
