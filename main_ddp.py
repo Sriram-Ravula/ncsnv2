@@ -12,7 +12,7 @@ import torch.utils.tensorboard as tb
 import copy
 import torch.multiprocessing as mp
 
-from runners.ddp_runner import train
+import runners.ddp_runner
 
 def parse_args_and_config():
     parser = argparse.ArgumentParser(description=globals()['__doc__'])
@@ -32,7 +32,7 @@ def parse_args_and_config():
 
     # parse config file
     with open(os.path.join('configs', args.config), 'r') as f:
-        config = yaml.load(f)
+        config = yaml.safe_load(f)
     new_config = dict2namespace(config)
 
     tb_path = os.path.join(args.exp, 'tensorboard', args.doc)
@@ -67,7 +67,7 @@ def parse_args_and_config():
         with open(os.path.join(args.log_path, 'config.yml'), 'w') as f:
             yaml.dump(new_config, f, default_flow_style=False)
 
-    new_config.tb_logger = tb.SummaryWriter(log_dir=tb_path)
+    tb_logger = tb.SummaryWriter(log_dir=tb_path)
     # setup logger
     level = getattr(logging, args.verbose.upper(), None)
     if not isinstance(level, int):
@@ -95,7 +95,7 @@ def parse_args_and_config():
         torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.benchmark = True
 
-    return args, new_config
+    return args, new_config, tb_logger
 
 def dict2namespace(config):
     namespace = argparse.Namespace()
@@ -108,7 +108,7 @@ def dict2namespace(config):
     return namespace
 
 def main():
-    args, config = parse_args_and_config()
+    args, config, tb_logger = parse_args_and_config()
     logging.info("Writing log file to {}".format(args.log_path))
     logging.info("Exp instance id = {}".format(os.getpid()))
     logging.info("Exp comment = {}".format(args.comment))
@@ -118,6 +118,11 @@ def main():
     print(yaml.dump(config_dict, default_flow_style=False))
     print("<" * 80)
 
+    return args, config, tb_logger
+
+if __name__ == '__main__':
+    args, config, tb_logger = main()
+
     logging.info("Spinning off processes for DDP")
     
     n_gpus = torch.cuda.device_count()
@@ -125,11 +130,7 @@ def main():
     world_size = n_gpus
 
     mp.spawn(runners.ddp_runner.train,
-             args=(world_size, args, config),
+             args=(world_size, args, config, tb_logger),
              nprocs=world_size,
              join=True)
-
-    return 0
-
-if __name__ == '__main__':
-    sys.exit(main())
+#TODO DON'T SEND UNPICKLEABLE STUFF I.E. THE TB_LOGGER THROUGH THE SPAWN PROCESS!!!

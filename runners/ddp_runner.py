@@ -20,8 +20,6 @@ from datasets import get_dataset
 
 from losses import get_optimizer
 from losses.dsm import anneal_dsm_score_estimation, rtm_loss
-
-__all__ = ['DDPRunner']
     
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
@@ -97,7 +95,7 @@ def checkpoint(ckpt_pth, score, optimizer, epoch, step, ema=None, sigmas=None, t
 
     return
 
-def train(rank, world_size, args, config):
+def train(rank, world_size, args, config, tb_logger):
     setup(rank, world_size)
 
     #Grab the datasets
@@ -157,7 +155,6 @@ def train(rank, world_size, args, config):
     
     #set up logging (rank 0 only)
     if rank == 0:
-        tb_logger = config.tb_logger
         logging.info("\n\STARTING TRAINING!\n\n")
         train_start = time.time()
 
@@ -242,7 +239,8 @@ def train(rank, world_size, args, config):
 
         #update sigmas if necessary
         if config.model.sigma_dist == 'rtm_dynamic':
-            sigmas = sigmas_running / total_n_shots_count
+            offset_eps = 1e-6
+            sigmas = (sigmas_running + offset_eps) / (total_n_shots_count + offset_eps)
             score.module.set_sigmas(sigmas)
 
         #print training epoch stats
@@ -419,7 +417,7 @@ def train(rank, world_size, args, config):
             #save and log and stuff
             if rank == 0:
                 image_grid = make_grid(output_samples, 6)
-                save_image(image_grid, os.path.join(args.log_sample_path, 'output_samples_{}.png'.format(epoch))))
+                save_image(image_grid, os.path.join(args.log_sample_path, 'output_samples_{}.png'.format(epoch)))
                 tb_logger.add_image('output_samples', image_grid, global_step=epoch)
 
                 if config.data.dataset == 'RTM_N':
@@ -432,11 +430,11 @@ def train(rank, world_size, args, config):
                     np.savetxt(os.path.join(args.log_sample_path, 'sample_shot_idxs_{}.txt'.format(epoch)), shot_idxs)
 
                     image_grid = make_grid(init_samples, 6)
-                    save_image(image_grid, os.path.join(args.log_sample_path, 'init_samples_{}.png'.format(epoch))))
+                    save_image(image_grid, os.path.join(args.log_sample_path, 'init_samples_{}.png'.format(epoch)))
                     tb_logger.add_image('init_samples', image_grid, global_step=epoch)
 
                     image_grid = make_grid(true_samples, 6)
-                    save_image(image_grid, os.path.join(args.log_sample_path, 'true_samples_{}.png'.format(epoch))))
+                    save_image(image_grid, os.path.join(args.log_sample_path, 'true_samples_{}.png'.format(epoch)))
                     tb_logger.add_image('true_samples', image_grid, global_step=epoch)
 
                 logging.info("\n\nFINISHED SAMPLING!\n\n")
