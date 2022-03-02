@@ -5,9 +5,7 @@ import logging
 import os
 
 import torch
-import torch.nn.functional as F
 import torch.distributed as dist
-import torch.multiprocessing as mp
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
@@ -111,7 +109,7 @@ def train(rank, world_size, args, config):
     score = DDP(score, device_ids=[rank], output_device=rank, find_unused_parameters=True)
     
     #Set up the exponential moving average
-    if self.config.model.ema:
+    if config.model.ema:
         ema_helper = DDPEMAHelper(mu=config.model.ema_rate)
         ema_helper.register(score)
 
@@ -129,8 +127,8 @@ def train(rank, world_size, args, config):
             n_shots = torch.unsqueeze(n_shots, 0)
         
         if config.model.sigma_dist == 'rtm_dynamic':
-            total_n_shots_count = torch.zeros(n_shots.numel()).to(rank) 
-            sigmas_running = sigmas.clone()
+            total_n_shots_count = torch.zeros(n_shots.numel(), device=rank)
+            sigmas_running = torch.zeros(n_shots.numel(), device=rank)
     
     #check if we need to resume
     if args.resume_training:
@@ -141,7 +139,7 @@ def train(rank, world_size, args, config):
         load_path = os.path.join(args.log_path, 'checkpoint.pth')
         eps = config.optim.eps
 
-        if self.config.model.ema:
+        if config.model.ema:
             if config.model.sigma_dist == 'rtm_dynamic':
                 start_epoch, step = resume(rank, load_path, score, eps, optimizer, ema_helper, sigmas, total_n_shots_count, sigmas_running)
             else:
@@ -165,16 +163,16 @@ def train(rank, world_size, args, config):
 
     #main training loop
     for epoch in range(start_epoch, config.training.n_epochs):
+        if rank == 0:
+            logging.info("\n\STARTING EPOCH " + str(epoch) + " !\n\n")
+            train_epoch_start = time.time()
 
         train_loader.sampler.set_epoch(epoch)
         epoch_train_loss = 0
         num_samples = 0
+        total_n_shots_count_epoch = torch.zeros(n_shots.numel(), device=rank)
+        sigmas_running_epoch = torch.zeros(n_shots.numel(), device=rank)
         score.train()
-
-        #set up logging (rank 0 only)
-        if rank == 0:
-            logging.info("\n\STARTING EPOCH!\n\n")
-            train_epoch_start = time.time()
 
         for i, batch in enumerate(train_loader):
             optimizer.zero_grad(set_to_none=True)
@@ -195,8 +193,8 @@ def train(rank, world_size, args, config):
             elif config.model.sigma_dist == 'rtm_dynamic':
                 train_loss, sum_rmses_list, n_shots_count = rtm_loss(score, batch, n_shots, sigmas, \
                                                                 dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=False)
-                total_n_shots_count += n_shots_count
-                sigmas_running += sum_rmses_list
+                total_n_shots_count_epoch += n_shots_count
+                sigmas_running_epoch += sum_rmses_list
             else:
                 train_loss = anneal_dsm_score_estimation(score, batch, sigmas, anneal_power=config.training.anneal_power)
             
@@ -226,23 +224,20 @@ def train(rank, world_size, args, config):
         data = {"epoch_train_loss": epoch_train_loss,
                 "num_samples": num_samples}
         if config.model.sigma_dist == 'rtm_dynamic':
-            data["total_n_shots_count"] = total_n_shots_count
-            data["sigmas_running"] = sigmas_running
+            data["total_n_shots_count_epoch"] = total_n_shots_count_epoch
+            data["sigmas_running_epoch"] = sigmas_running_epoch
         outputs = [None for _ in range(world_size)]
         dist.all_gather_object(outputs, data)
 
         #compile communal stats
         total_train_loss = 0
         ns = 0
-        if config.model.sigma_dist == 'rtm_dynamic':
-            total_n_shots_count.fill_(0)
-            sigmas_running.fill_(0)
         for out in outputs:
             total_train_loss += out["epoch_train_loss"]
             ns += out["num_samples"]
             if config.model.sigma_dist == 'rtm_dynamic':
-                total_n_shots_count += out["total_n_shots_count"]
-                sigmas_running += out["sigmas_running"]
+                total_n_shots_count += out["total_n_shots_count_epoch"]
+                sigmas_running += out["sigmas_running_epoch"]
         epoch_train_loss = total_train_loss / ns
 
         #update sigmas if necessary
@@ -252,7 +247,7 @@ def train(rank, world_size, args, config):
 
         #print training epoch stats
         if rank == 0:
-            logging.info("\n\nFINISHED TRAIN EPOCH " + str(epoch) + "!\n\n")
+            logging.info("\n\nFINISHED TRAIN EPOCH!\n\n")
             train_epoch_end = time.time()
             logging.info("TRAIN EPOCH TIME: ", str(train_epoch_end - train_epoch_start))
 
@@ -292,6 +287,10 @@ def train(rank, world_size, args, config):
 
         #check if we want to perform a test epoch
         if epoch % config.training.test_freq == 0:
+            if rank == 0:
+                logging.info("\n\STARTING TEST EPOCH!\n\n")
+                test_epoch_start = time.time()
+
             if config.model.ema:
                 test_score = ema_helper.ema_copy(score)
             else:
@@ -301,10 +300,6 @@ def train(rank, world_size, args, config):
             test_loader.sampler.set_epoch(epoch)
             epoch_test_loss = 0
             num_samples = 0
-
-            if rank == 0:
-                logging.info("\n\STARTING TEST EPOCH!\n\n")
-                test_epoch_start = time.time()
 
             for i, batch in enumerate(test_loader):
                 if config.data.dataset == 'RTM_N':
@@ -348,7 +343,7 @@ def train(rank, world_size, args, config):
 
             #print test epoch stats
             if rank == 0:
-                logging.info("\n\nFINISHED TEST EPOCH " + str(epoch) + "!\n\n")
+                logging.info("\n\nFINISHED TEST EPOCH!\n\n")
                 test_epoch_end = time.time()
                 logging.info("TEST EPOCH TIME: ", str(test_epoch_end - test_epoch_start))
 
@@ -357,12 +352,18 @@ def train(rank, world_size, args, config):
     
         #check if we would like to sample from the score network
         if epoch % config.training.sample_freq == 0:
+            if rank == 0:
+                logging.info("\n\STARTING SAMPLING!\n\n")
+                sample_start = time.time()
+
+            #set the ema as the test model
             if config.model.ema:
                 test_score = ema_helper.ema_copy(score)
             else:
                 test_score = score
             test_score.eval()
 
+            #prepare the initial samples for Langevin
             num_test_samples = config.sampling.batch_size // world_size
             init_samples = torch.rand(num_test_samples, config.data.channels, config.data.image_size, 
                                             config.data.image_size, device=rank)
@@ -379,14 +380,79 @@ def train(rank, world_size, args, config):
                     slice_ids.append(y)
                     shot_idxs.append(idx)
             
+            #generate the samples
             output_samples = anneal_Langevin_dynamics(x_mod=init_samples, scorenet=test_score, sigmas=sigmas,\
                                 n_steps_each=config.sampling.n_steps_each, step_lr=config.sampling.step_lr, \
                                 final_only=config.sampling.final_only, verbose=True if rank == 0 else False,\
                                 denoise=config.sampling.denoise, add_noise=config.sampling.add_noise)
+            del test_score
 
-                
+            #gather samples
+            torch.cuda.set_device(rank)
+            data = {"output_samples": output_samples[-1]}
+            if config.data.dataset == 'RTM_N':
+                data["init_samples"] = init_samples
+                data["slice_ids"] = slice_ids
+                data["shot_idxs"] = shot_idxs
+                data["true_samples"] = true_samples
+            outputs = [None for _ in range(world_size)]
+            dist.all_gather_object(outputs, data)
 
+            #compile the results
+            output_samples = None
+            if config.data.dataset == 'RTM_N':
+                init_samples = None
+                true_samples = None
+                slice_ids = []
+                shot_idxs = []
+            for out in outputs:
+                output_samples = torch.cat((output_samples, out["output_samples"]), 0) \
+                                    if output_samples is not None else out["output_samples"]
+                if config.data.dataset == 'RTM_N':
+                    init_samples = torch.cat((init_samples, out["init_samples"]), 0) \
+                                        if init_samples is not None else out["init_samples"]
+                    true_samples = torch.cat((true_samples, out["true_samples"]), 0) \
+                                        if true_samples is not None else out["true_samples"]
+                    slice_ids.extend(out["slice_ids"])
+                    shot_idxs.extend(out["shot_idxs"])
+            
+            #save and log and stuff
+            if rank == 0:
+                image_grid = make_grid(output_samples, 6)
+                save_image(image_grid, os.path.join(args.log_sample_path, 'output_samples_{}.png'.format(epoch))))
+                tb_logger.add_image('output_samples', image_grid, global_step=epoch)
+
+                if config.data.dataset == 'RTM_N':
+                    mse = torch.nn.MSELoss()(output_samples, true_samples)
+
+                    tb_logger.add_scalar('sample_mse', mse.item(), global_step=epoch)
+                    logging.info("Sample MSE: {}".format(mse.item()))
+
+                    np.savetxt(os.path.join(args.log_sample_path, 'sample_slice_ids_{}.txt'.format(epoch)), slice_ids)
+                    np.savetxt(os.path.join(args.log_sample_path, 'sample_shot_idxs_{}.txt'.format(epoch)), shot_idxs)
+
+                    image_grid = make_grid(init_samples, 6)
+                    save_image(image_grid, os.path.join(args.log_sample_path, 'init_samples_{}.png'.format(epoch))))
+                    tb_logger.add_image('init_samples', image_grid, global_step=epoch)
+
+                    image_grid = make_grid(true_samples, 6)
+                    save_image(image_grid, os.path.join(args.log_sample_path, 'true_samples_{}.png'.format(epoch))))
+                    tb_logger.add_image('true_samples', image_grid, global_step=epoch)
+
+                logging.info("\n\nFINISHED SAMPLING!\n\n")
+                train_epoch_end = time.time()
+                logging.info("SAMPLING TIME: ", str(train_epoch_end - train_epoch_start))
+
+            del init_samples
+            del output_samples
+            if config.data.dataset == 'RTM_N':
+                del true_samples
+        
+        #finish off epoch
+        if rank == 0:
+            logging.info("\n\nFINISHED EPOCH!\n\n")
+            train_epoch_end = time.time()
+            logging.info("TOTAL EPOCH TIME: ", str(train_epoch_end - train_epoch_start))
 
     #finish distributed processes
     cleanup()
-            

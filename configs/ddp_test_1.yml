@@ -40,4 +40,4 @@ optim:
   lr: 0.0001
   beta1: 0.9
   amsgrad: false
-  eps: 0.001
+  eps: 0.00000001

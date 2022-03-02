@@ -10,9 +10,9 @@ import torch
 import numpy as np
 import torch.utils.tensorboard as tb
 import copy
-from runners import *
+import torch.multiprocessing as mp
 
-import os
+from runners.ddp_runner import train
 
 def parse_args_and_config():
     parser = argparse.ArgumentParser(description=globals()['__doc__'])
@@ -24,11 +24,7 @@ def parse_args_and_config():
                                                                'Will be the name of the log folder.')
     parser.add_argument('--comment', type=str, default='', help='A string for experiment comment')
     parser.add_argument('--verbose', type=str, default='info', help='Verbose level: info | debug | warning | critical')
-    parser.add_argument('--test', action='store_true', help='Whether to test the model')
-    parser.add_argument('--sample', action='store_true', help='Whether to produce samples from the model')
-    parser.add_argument('--fast_fid', action='store_true', help='Whether to do fast fid test')
     parser.add_argument('--resume_training', action='store_true', help='Whether to resume training')
-    parser.add_argument('-i', '--image_folder', type=str, default='images', help="The folder name of samples")
     parser.add_argument('--ni', action='store_true', help="No interaction. Suitable for Slurm Job launcher")
 
     args = parser.parse_args()
@@ -119,23 +115,19 @@ def main():
     logging.info("Config =")
     print(">" * 80)
     config_dict = copy.copy(vars(config))
-    if not args.test and not args.sample and not args.fast_fid:
-        del config_dict['tb_logger']
     print(yaml.dump(config_dict, default_flow_style=False))
     print("<" * 80)
 
-    try:
-        runner = NCSNRunner(args, config)
-        if args.test:
-            runner.test()
-        elif args.sample:
-            runner.sample()
-        elif args.fast_fid:
-            runner.fast_fid()
-        else:
-            runner.train()
-    except:
-        logging.error(traceback.format_exc())
+    logging.info("Spinning off processes for DDP")
+    
+    n_gpus = torch.cuda.device_count()
+    assert n_gpus >= 2, f"Requires at least 2 GPUs to run, but got {n_gpus}"
+    world_size = n_gpus
+
+    mp.spawn(runners.ddp_runner.train,
+             args=(world_size, args, config),
+             nprocs=world_size,
+             join=True)
 
     return 0
 
