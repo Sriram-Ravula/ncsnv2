@@ -17,7 +17,7 @@ def anneal_dsm_score_estimation(scorenet, batch, sigmas, labels=None, anneal_pow
     if hook is not None:
         hook(loss, labels)
 
-    return loss.sum() #loss.mean(dim=0)
+    return loss.mean(dim=0) #loss.sum() #
 
 def rtm_loss(scorenet, batch, n_shots, sigmas, dynamic_sigmas=False, anneal_power=2., val=False):
     """
@@ -65,10 +65,10 @@ def rtm_loss(scorenet, batch, n_shots, sigmas, dynamic_sigmas=False, anneal_powe
     loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * sigma_n.squeeze() ** anneal_power
 
     if dynamic_sigmas:
-        #return loss.mean(dim=0), sum_mses_list, n_shots_count 
-        return loss.sum(), sum_mses_list, n_shots_count
+        return loss.mean(dim=0), sum_mses_list, n_shots_count 
+        #return loss.sum(), sum_mses_list, n_shots_count
     else:
-        return loss.sum() #loss.mean(dim=0)
+        loss.mean(dim=0) #return loss.sum() #
 
 def rtm_score_estimation(scorenet, samples, n_shots, lambdas_list, rtm_dataset, dynamic_lambdas=False, labels=None, hook=None, val=False):
     """

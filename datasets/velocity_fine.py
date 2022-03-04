@@ -13,7 +13,7 @@ class Velocity(TensorDataset):
     def __getitem__(self, index):
         sample = self.tensors[index]
 
-        if self.transform:
+        if self.transform is not None:
             sample = self.transform(sample)
 
         return sample, index

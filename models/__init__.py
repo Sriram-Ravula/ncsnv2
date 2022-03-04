@@ -80,7 +80,7 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
                     noise = torch.zeros_like(x_mod)
 
                 #Langevin update step
-                x_mod = x_mod + step_size*grad + np.sqrt(step_size * 2)*noise   
+                x_mod = x_mod + step_size*grad + torch.sqrt(step_size * 2)*noise   
 
                 if not final_only:
                     images.append(x_mod)
@@ -92,7 +92,7 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
                     image_norm = torch.norm(x_mod.view(x_mod.shape[0], -1), dim=-1).mean()
 
                     #calc snr as scaled version of [||s(x, \sigma_i)|| / ||z_t||] and mean of score for logging
-                    snr = np.sqrt(step_size / 2.) * grad_norm / noise_norm
+                    snr = torch.sqrt(step_size / 2.) * grad_norm / noise_norm
                     grad_mean_norm = torch.norm(grad.mean(dim=0).view(-1)) ** 2 * sigma ** 2
 
                     print("level: {}, step_size: {:.3f}, grad_norm: {:.3f}, image_norm: {:.3f}, snr: {:.3f}, grad_mean_norm: {:.3f}".format(

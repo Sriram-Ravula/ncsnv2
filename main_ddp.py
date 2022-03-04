@@ -49,9 +49,9 @@ def parse_args_and_config():
 
             if overwrite:
                 shutil.rmtree(args.log_path)
-                shutil.rmtree(tb_path)
                 os.makedirs(args.log_path)
                 args.log_sample_path = os.path.join(args.log_path, 'samples')
+                args.tb_path = tb_path
                 os.makedirs(args.log_sample_path, exist_ok=True)
                 if os.path.exists(tb_path):
                     shutil.rmtree(tb_path)
@@ -67,25 +67,25 @@ def parse_args_and_config():
         with open(os.path.join(args.log_path, 'config.yml'), 'w') as f:
             yaml.dump(new_config, f, default_flow_style=False)
 
-    tb_logger = tb.SummaryWriter(log_dir=tb_path)
     # setup logger
-    level = getattr(logging, args.verbose.upper(), None)
-    if not isinstance(level, int):
-        raise ValueError('level {} not supported'.format(args.verbose))
+    # level = getattr(logging, args.verbose.upper(), None)
+    # if not isinstance(level, int):
+    #     raise ValueError('level {} not supported'.format(args.verbose))
 
-    handler1 = logging.StreamHandler()
-    handler2 = logging.FileHandler(os.path.join(args.log_path, 'stdout.txt'))
-    formatter = logging.Formatter('%(levelname)s - %(filename)s - %(asctime)s - %(message)s')
-    handler1.setFormatter(formatter)
-    handler2.setFormatter(formatter)
-    logger = logging.getLogger()
-    logger.addHandler(handler1)
-    logger.addHandler(handler2)
-    logger.setLevel(level)
+    # handler1 = logging.StreamHandler()
+    # handler2 = logging.FileHandler(os.path.join(args.log_path, 'stdout.txt'))
+    # formatter = logging.Formatter('%(levelname)s - %(filename)s - %(asctime)s - %(message)s')
+    # handler1.setFormatter(formatter)
+    # handler2.setFormatter(formatter)
+    # logger = logging.getLogger()
+    # logger.addHandler(handler1)
+    # logger.addHandler(handler2)
+    # logger.setLevel(level)
 
     # add device
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-    logging.info("Using device: {}".format(device))
+    # logging.info("Using device: {}".format(device))
+    print("Using device: {}".format(device))
     new_config.device = device
 
     # set random seed
@@ -95,7 +95,7 @@ def parse_args_and_config():
         torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.benchmark = True
 
-    return args, new_config, tb_logger
+    return args, new_config
 
 def dict2namespace(config):
     namespace = argparse.Namespace()
@@ -108,29 +108,34 @@ def dict2namespace(config):
     return namespace
 
 def main():
-    args, config, tb_logger = parse_args_and_config()
-    logging.info("Writing log file to {}".format(args.log_path))
-    logging.info("Exp instance id = {}".format(os.getpid()))
-    logging.info("Exp comment = {}".format(args.comment))
-    logging.info("Config =")
+    args, config = parse_args_and_config()
+    # logging.info("Writing log file to {}".format(args.log_path))
+    # logging.info("Exp instance id = {}".format(os.getpid()))
+    # logging.info("Exp comment = {}".format(args.comment))
+    # logging.info("Config =")
+    print("Writing log file to {}".format(args.log_path))
+    print("Exp instance id = {}".format(os.getpid()))
+    print("Exp comment = {}".format(args.comment))
+    print("Config =")
     print(">" * 80)
     config_dict = copy.copy(vars(config))
     print(yaml.dump(config_dict, default_flow_style=False))
     print("<" * 80)
 
-    return args, config, tb_logger
+    return args, config
 
 if __name__ == '__main__':
-    args, config, tb_logger = main()
-
-    logging.info("Spinning off processes for DDP")
+    args, config = main()
     
     n_gpus = torch.cuda.device_count()
     assert n_gpus >= 2, f"Requires at least 2 GPUs to run, but got {n_gpus}"
     world_size = n_gpus
 
+    # logging.info("Spawning " + str(world_size) + " processes")
+    print("Spawning " + str(world_size) + " processes for DDP")
+
     mp.spawn(runners.ddp_runner.train,
-             args=(world_size, args, config, tb_logger),
+             args=(world_size, args, config),
              nprocs=world_size,
              join=True)
-#TODO DON'T SEND UNPICKLEABLE STUFF I.E. THE TB_LOGGER THROUGH THE SPAWN PROCESS!!!
+             

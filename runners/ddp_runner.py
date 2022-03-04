@@ -3,6 +3,7 @@ import glob
 import tqdm
 import logging
 import os
+import time
 
 import torch
 import torch.distributed as dist
@@ -10,6 +11,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torch.utils.data.distributed import DistributedSampler
 from torchvision.utils import make_grid, save_image
+import torch.utils.tensorboard as tb
 
 from models import anneal_Langevin_dynamics
 from models import get_sigmas
@@ -33,13 +35,13 @@ def cleanup():
 def grab_data(args, config, rank, world_size, pin_memory=False):
     dataset, test_dataset = get_dataset(args, config)
 
-    train_sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
+    train_sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=False)
     test_sampler = DistributedSampler(test_dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
 
     train_dataloader = DataLoader(dataset, batch_size=config.training.batch_size, pin_memory=pin_memory, \
-                        num_workers=config.data.num_workers, drop_last=False, shuffle=True, sampler=train_sampler)
+                        num_workers=config.data.num_workers, drop_last=False, sampler=train_sampler, persistent_workers=True)
     test_dataloader = DataLoader(test_dataset, batch_size=config.training.batch_size, pin_memory=pin_memory, \
-                        num_workers=config.data.num_workers, drop_last=False, shuffle=False, sampler=train_sampler)
+                        num_workers=config.data.num_workers, drop_last=False, sampler=test_sampler)
     
     return train_dataloader, test_dataloader
 
@@ -95,7 +97,7 @@ def checkpoint(ckpt_pth, score, optimizer, epoch, step, ema=None, sigmas=None, t
 
     return
 
-def train(rank, world_size, args, config, tb_logger):
+def train(rank, world_size, args, config):
     setup(rank, world_size)
 
     #Grab the datasets
@@ -104,11 +106,11 @@ def train(rank, world_size, args, config, tb_logger):
     #set up the score-based model and parallelize
     score = NCSNv2Deepest(config).to(rank)
     score = torch.nn.SyncBatchNorm.convert_sync_batchnorm(score)
-    score = DDP(score, device_ids=[rank], output_device=rank, find_unused_parameters=True)
+    score = DDP(score, device_ids=[rank], output_device=rank, find_unused_parameters=False)
     
     #Set up the exponential moving average
     if config.model.ema:
-        ema_helper = DDPEMAHelper(mu=config.model.ema_rate)
+        ema_helper = DDPEMAHelper(mu=config.model.ema_rate, rank=rank)
         ema_helper.register(score)
 
     #set up optimizer
@@ -151,24 +153,41 @@ def train(rank, world_size, args, config, tb_logger):
         if rank == 0:
             logging.info("\n\nFINISHED LOADING FROM CHECKPOINT!\n\n")
             toc = time.time()
-            logging.info("TIME ELAPSED: ", str(toc - tic))
+            logging.info("TIME ELAPSED: " + str(toc - tic))
     
     #set up logging (rank 0 only)
     if rank == 0:
-        logging.info("\n\STARTING TRAINING!\n\n")
+        # setup logger
+        level = getattr(logging, args.verbose.upper(), None)
+        if not isinstance(level, int):
+            raise ValueError('level {} not supported'.format(args.verbose))
+
+        handler1 = logging.StreamHandler()
+        handler2 = logging.FileHandler(os.path.join(args.log_path, 'stdout.txt'))
+        formatter = logging.Formatter('%(levelname)s - %(filename)s - %(asctime)s - %(message)s')
+        handler1.setFormatter(formatter)
+        handler2.setFormatter(formatter)
+        logger = logging.getLogger()
+        logger.addHandler(handler1)
+        logger.addHandler(handler2)
+        logger.setLevel(level)
+
+        tb_logger = tb.SummaryWriter(log_dir=args.tb_path)
+        logging.info("\nSTARTING TRAINING!\n\n")
         train_start = time.time()
 
     #main training loop
     for epoch in range(start_epoch, config.training.n_epochs):
         if rank == 0:
-            logging.info("\n\STARTING EPOCH " + str(epoch) + " !\n\n")
+            logging.info("\nSTARTING EPOCH " + str(epoch) + " !\n\n")
             train_epoch_start = time.time()
 
         train_loader.sampler.set_epoch(epoch)
         epoch_train_loss = 0
         num_samples = 0
-        total_n_shots_count_epoch = torch.zeros(n_shots.numel(), device=rank)
-        sigmas_running_epoch = torch.zeros(n_shots.numel(), device=rank)
+        if config.model.sigma_dist == 'rtm_dynamic':
+            total_n_shots_count_epoch = torch.zeros(n_shots.numel(), device=rank)
+            sigmas_running_epoch = torch.zeros(n_shots.numel(), device=rank)
         score.train()
 
         for i, batch in enumerate(train_loader):
@@ -200,8 +219,8 @@ def train(rank, world_size, args, config, tb_logger):
 
             #log batch stats
             if rank == 0:
-                tb_logger.add_scalar('mean_train_loss_batch', train_loss.item() / X.shape[0], global_step=step)
-                logging.info("step: {}, Batch mean train loss: {}".format(step, train_loss.item() / X.shape[0]))
+                tb_logger.add_scalar('mean_train_loss_batch', train_loss.item(), global_step=step)
+                logging.info("step: {}, Batch mean train loss: {}".format(step, train_loss.item()))
                 if step == 0:
                     tb_logger.add_image('training_rtm_243', make_grid(X, 4), global_step=step)
                     if config.data.dataset == 'RTM_N':
@@ -212,13 +231,14 @@ def train(rank, world_size, args, config, tb_logger):
             if config.model.ema:
                 ema_helper.update(score)
             
-            epoch_train_loss += train_loss.item()
-            step += 1
+            epoch_train_loss += train_loss * X.shape[0] #adding sum instead of mean loss
             num_samples += X.shape[0]
+
+            step += 1
 
         #gather communal stats for the epoch
         torch.cuda.set_device(rank)
-        data = {"epoch_train_loss": epoch_train_loss,
+        data = {"epoch_train_loss": epoch_train_loss.item(),
                 "num_samples": num_samples}
         if config.model.sigma_dist == 'rtm_dynamic':
             data["total_n_shots_count_epoch"] = total_n_shots_count_epoch
@@ -239,7 +259,7 @@ def train(rank, world_size, args, config, tb_logger):
 
         #update sigmas if necessary
         if config.model.sigma_dist == 'rtm_dynamic':
-            offset_eps = 1e-6
+            offset_eps = 1e-8
             sigmas = (sigmas_running + offset_eps) / (total_n_shots_count + offset_eps)
             score.module.set_sigmas(sigmas)
 
@@ -247,7 +267,7 @@ def train(rank, world_size, args, config, tb_logger):
         if rank == 0:
             logging.info("\n\nFINISHED TRAIN EPOCH!\n\n")
             train_epoch_end = time.time()
-            logging.info("TRAIN EPOCH TIME: ", str(train_epoch_end - train_epoch_start))
+            logging.info("TRAIN EPOCH TIME: " + str(train_epoch_end - train_epoch_start))
 
             tb_logger.add_scalar('mean_train_loss_epoch', epoch_train_loss, global_step=epoch)
             logging.info("Epoch mean train loss: {}".format(epoch_train_loss))
@@ -255,7 +275,7 @@ def train(rank, world_size, args, config, tb_logger):
         #check if we need to checkpoint
         if epoch % config.training.checkpoint_freq == 0:
             if rank == 0:
-                logging.info("\n\SAVING CHECKPOINT\n\n")
+                logging.info("\nSAVING CHECKPOINT\n\n")
                 checkpoint_start = time.time()
 
                 if config.model.sigma_dist == 'rtm_dynamic':
@@ -277,7 +297,7 @@ def train(rank, world_size, args, config, tb_logger):
             if rank == 0:
                 logging.info("\n\nFINISHED CHECKPOINTING!\n\n")
                 checkpoint_end = time.time()
-                logging.info("CHECKPOINT TIME: ", str(checkpoint_end - checkpoint_start))
+                logging.info("CHECKPOINT TIME: " + str(checkpoint_end - checkpoint_start))
 
             #keep processes from moving on until rank 0 has finished saving
             #this prevents changes to the state variables while saving                          
@@ -286,7 +306,7 @@ def train(rank, world_size, args, config, tb_logger):
         #check if we want to perform a test epoch
         if epoch % config.training.test_freq == 0:
             if rank == 0:
-                logging.info("\n\STARTING TEST EPOCH!\n\n")
+                logging.info("\nSTARTING TEST EPOCH!\n\n")
                 test_epoch_start = time.time()
 
             if config.model.ema:
@@ -310,23 +330,24 @@ def train(rank, world_size, args, config, tb_logger):
                     X = X.to(rank)
                     batch = (X, y)
                 
-                if config.model.sigma_dist == 'rtm':
-                    test_loss = rtm_loss(test_score, batch, n_shots, sigmas, \
-                                    dynamic_sigmas=False, anneal_power=config.training.anneal_power, val=True)
-                elif config.model.sigma_dist == 'rtm_dynamic':
-                    test_loss, _, _ = rtm_loss(test_score, batch, n_shots, sigmas, \
-                                                dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=True)
-                else:
-                    test_loss = anneal_dsm_score_estimation(test_score, batch, sigmas, anneal_power=config.training.anneal_power)
+                with torch.no_grad():
+                    if config.model.sigma_dist == 'rtm':
+                        test_loss = rtm_loss(test_score, batch, n_shots, sigmas, \
+                                        dynamic_sigmas=False, anneal_power=config.training.anneal_power, val=True)
+                    elif config.model.sigma_dist == 'rtm_dynamic':
+                        test_loss, _, _ = rtm_loss(test_score, batch, n_shots, sigmas, \
+                                                    dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=True)
+                    else:
+                        test_loss = anneal_dsm_score_estimation(test_score, batch, sigmas, anneal_power=config.training.anneal_power)
                 
-                epoch_test_loss += test_loss.item()
+                epoch_test_loss += test_loss * X.shape[0]
                 num_samples += X.shape[0]
             
             del test_score
 
             #gather communal stats for the epoch
             torch.cuda.set_device(rank)
-            data = {"epoch_test_loss": epoch_test_loss,
+            data = {"epoch_test_loss": epoch_test_loss.item(),
                     "num_samples": num_samples}
             outputs = [None for _ in range(world_size)]
             dist.all_gather_object(outputs, data)
@@ -343,7 +364,7 @@ def train(rank, world_size, args, config, tb_logger):
             if rank == 0:
                 logging.info("\n\nFINISHED TEST EPOCH!\n\n")
                 test_epoch_end = time.time()
-                logging.info("TEST EPOCH TIME: ", str(test_epoch_end - test_epoch_start))
+                logging.info("TEST EPOCH TIME: " + str(test_epoch_end - test_epoch_start))
 
                 tb_logger.add_scalar('mean_test_loss_epoch', epoch_test_loss, global_step=epoch)
                 logging.info("Epoch mean test loss: {}".format(epoch_test_loss))
@@ -351,7 +372,7 @@ def train(rank, world_size, args, config, tb_logger):
         #check if we would like to sample from the score network
         if epoch % config.training.sample_freq == 0:
             if rank == 0:
-                logging.info("\n\STARTING SAMPLING!\n\n")
+                logging.info("\nSTARTING SAMPLING!\n\n")
                 sample_start = time.time()
 
             #set the ema as the test model
@@ -404,13 +425,13 @@ def train(rank, world_size, args, config, tb_logger):
                 slice_ids = []
                 shot_idxs = []
             for out in outputs:
-                output_samples = torch.cat((output_samples, out["output_samples"]), 0) \
-                                    if output_samples is not None else out["output_samples"]
+                output_samples = torch.cat((output_samples, out["output_samples"].to(rank)), 0) \
+                                    if output_samples is not None else out["output_samples"].to(rank)
                 if config.data.dataset == 'RTM_N':
-                    init_samples = torch.cat((init_samples, out["init_samples"]), 0) \
-                                        if init_samples is not None else out["init_samples"]
+                    init_samples = torch.cat((init_samples, out["init_samples"].to(rank)), 0) \
+                                        if init_samples is not None else out["init_samples"].to(rank)
                     true_samples = torch.cat((true_samples, out["true_samples"]), 0) \
-                                        if true_samples is not None else out["true_samples"]
+                                        if true_samples is not None else out["true_samples"].to(rank)
                     slice_ids.extend(out["slice_ids"])
                     shot_idxs.extend(out["shot_idxs"])
             
@@ -439,7 +460,7 @@ def train(rank, world_size, args, config, tb_logger):
 
                 logging.info("\n\nFINISHED SAMPLING!\n\n")
                 train_epoch_end = time.time()
-                logging.info("SAMPLING TIME: ", str(train_epoch_end - train_epoch_start))
+                logging.info("SAMPLING TIME: " + str(train_epoch_end - train_epoch_start))
 
             del init_samples
             del output_samples
@@ -450,7 +471,7 @@ def train(rank, world_size, args, config, tb_logger):
         if rank == 0:
             logging.info("\n\nFINISHED EPOCH!\n\n")
             train_epoch_end = time.time()
-            logging.info("TOTAL EPOCH TIME: ", str(train_epoch_end - train_epoch_start))
+            logging.info("TOTAL EPOCH TIME: " + str(train_epoch_end - train_epoch_start))
 
     #finish distributed processes
     cleanup()
