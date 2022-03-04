@@ -19,7 +19,7 @@ data:
   image_size: 256
   channels: 1
   random_flip: true
-  num_workers: 0
+  num_workers: 8
   logit_transform: false
   uniform_dequantization: false
   gaussian_dequantization: false

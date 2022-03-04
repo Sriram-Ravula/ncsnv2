@@ -231,8 +231,9 @@ def train(rank, world_size, args, config):
             if config.model.ema:
                 ema_helper.update(score)
             
-            epoch_train_loss += train_loss * X.shape[0] #adding sum instead of mean loss
-            num_samples += X.shape[0]
+            with torch.no_grad():
+                epoch_train_loss += train_loss * X.shape[0] #adding sum instead of mean loss
+                num_samples += X.shape[0]
 
             step += 1
 
@@ -340,8 +341,8 @@ def train(rank, world_size, args, config):
                     else:
                         test_loss = anneal_dsm_score_estimation(test_score, batch, sigmas, anneal_power=config.training.anneal_power)
                 
-                epoch_test_loss += test_loss * X.shape[0]
-                num_samples += X.shape[0]
+                    epoch_test_loss += test_loss * X.shape[0]
+                    num_samples += X.shape[0]
             
             del test_score
 

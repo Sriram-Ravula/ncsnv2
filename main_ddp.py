@@ -60,7 +60,7 @@ def parse_args_and_config():
                 sys.exit(0)
         else:
             os.makedirs(args.log_path)
-
+            args.tb_path = tb_path
             args.log_sample_path = os.path.join(args.log_path, 'samples')
             os.makedirs(args.log_sample_path, exist_ok=True)
 
