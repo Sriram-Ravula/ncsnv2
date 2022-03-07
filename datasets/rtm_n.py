@@ -68,6 +68,8 @@ class RTM_N(TensorDataset):
             self.H, self.W = self.tensors.shape[-2:]
         
         if self.debug:
+            self.tensors = self.tensors[0:32] #TODO remove these debugging lines
+            self.slices = self.slices[0:32]
             toc = time.time()
             print("TIME ELAPSED: ", str(toc - tic))
             print("Finished building dataset!")
@@ -108,7 +110,7 @@ class RTM_N(TensorDataset):
 
         used_nshots = self.n_shots[shot_idx].item()
 
-        n_shot_sample = self.grab_single_rtm_n_img(index, used_nshots, do_parallel=True) #NOTE do_parallel true here for manual calls
+        n_shot_sample = self.grab_single_rtm_n_img(index, used_nshots, do_parallel=False)
 
         #perform a random horizontal flip, making sure both images have the same flip
         if flip:

@@ -1,6 +1,6 @@
 training:
   batch_size: 4
-  n_epochs: 1  #max number of training epochs
+  n_epochs: 2  #max number of training epochs
   checkpoint_freq: 1 #save weights every n epochs
   test_freq: 1 #test every n epochs
   sample_freq: 1 #sample every n epochs
@@ -9,7 +9,7 @@ training:
 sampling:
   batch_size: 36  #number of samples to produce for sampling
   step_lr: 0.0000016  #epsilon - step size for sampling during Langevin Dynamics
-  n_steps_each: 3 #T - number of inner loop steps
+  n_steps_each: 1 #T - number of inner loop steps
   final_only: true
   denoise: true #whether to add \sigma^2 * s_theta(x_T, \sigma_T) to the final output
   add_noise: true #whether to add stochastic noise during Langevin dynamics (false means MAP estimation)
@@ -19,7 +19,7 @@ data:
   image_size: 256
   channels: 1
   random_flip: true
-  num_workers: 0
+  num_workers: 8
   logit_transform: false
   uniform_dequantization: false
   gaussian_dequantization: false
@@ -27,7 +27,7 @@ data:
 
 model:
   sigma_begin: 75 
-  num_classes: 10 #1100 
+  num_classes: 10 
   ema: true 
   ema_rate: 0.999 
   spec_norm: false

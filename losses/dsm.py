@@ -31,20 +31,21 @@ def rtm_loss(scorenet, batch, n_shots, sigmas, dynamic_sigmas=False, anneal_powe
     
     #(2) grab the correct sigma(shot_idx) val
     #sigma_n has size [N]
-    if dynamic_sigmas:
-        #this gives us sqrt((1 / H*W*C) ||x_243 - x_N||_2^2), i.e. the RMSE per sample
-        sigma_n = torch.sqrt(torch.mean(target ** 2, dim=[1, 2, 3])) 
+    with torch.no_grad():
+        if dynamic_sigmas:
+            #this gives us sqrt((1 / H*W*C) ||x_243 - x_N||_2^2), i.e. the RMSE per sample
+            sigma_n = torch.sqrt(torch.mean(target ** 2, dim=[1, 2, 3])) 
 
-        sum_mses_list = torch.zeros(n_shots.numel(), device=X_243.device)
-        n_shots_count = torch.zeros(n_shots.numel(), device=X_243.device)
+            sum_mses_list = torch.zeros(n_shots.numel(), device=X_243.device)
+            n_shots_count = torch.zeros(n_shots.numel(), device=X_243.device)
 
-        for i, idx in enumerate(shot_idx):
-            sum_mses_list[idx] += sigma_n[i].item()
-            n_shots_count[idx] += 1
+            for i, idx in enumerate(shot_idx):
+                sum_mses_list[idx] += sigma_n[i].item()
+                n_shots_count[idx] += 1
 
-        sigma_n = sigma_n.view(X_243.shape[0], *([1] * len(X_243.shape[1:])))                 
-    else:
-        sigma_n = sigmas[shot_idx].view(X_243.shape[0], *([1] * len(X_243.shape[1:])))
+            sigma_n = sigma_n.view(X_243.shape[0], *([1] * len(X_243.shape[1:])))                 
+        else:
+            sigma_n = sigmas[shot_idx].view(X_243.shape[0], *([1] * len(X_243.shape[1:])))
     
     #(3) Scale the target
     target = target / (sigma_n ** 2)

@@ -58,7 +58,7 @@ class DDPEMAHelper(object):
             module = module.module
         for name, param in module.named_parameters():
             if param.requires_grad:
-                self.shadow[name] = param.data.clone()
+                self.shadow[name] = param.data.detach().clone().requires_grad_(False)
 
     def update(self, module):
         if isinstance(module, DDP):
@@ -72,7 +72,7 @@ class DDPEMAHelper(object):
             module = module.module
         for name, param in module.named_parameters():
             if param.requires_grad:
-                param.data.copy_(self.shadow[name].data)
+                param.data.copy_(self.shadow[name].data.detach().clone().requires_grad_(False))
 
     def ema_copy(self, module):
         if isinstance(module, DDP):

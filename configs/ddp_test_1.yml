@@ -1,9 +1,9 @@
 training:
   batch_size: 4
-  n_epochs: 1  #max number of training epochs
-  checkpoint_freq: 1 #save weights every n epochs
-  test_freq: 1 #test every n epochs
-  sample_freq: 1 #sample every n epochs
+  n_epochs: 2  #max number of training epochs
+  checkpoint_freq: 5 #save weights every n epochs
+  test_freq: 5 #test every n epochs
+  sample_freq: 5 #sample every n epochs
   anneal_power: 2 
 
 sampling:
@@ -13,7 +13,7 @@ sampling:
   final_only: true
   denoise: true #whether to add \sigma^2 * s_theta(x_T, \sigma_T) to the final output
   add_noise: false #whether to add stochastic noise during Langevin dynamics (false means MAP estimation)
-  shot_idx: 4 #the index of the n_shots to use when initializing samples 
+  shot_idx: 0 #the index of the n_shots to use when initializing samples 
 
 data:
   dataset: "RTM_N"

@@ -4,6 +4,7 @@ import tqdm
 import logging
 import os
 import time
+import gc
 
 import torch
 import torch.distributed as dist
@@ -100,13 +101,15 @@ def checkpoint(ckpt_pth, score, optimizer, epoch, step, ema=None, sigmas=None, t
 def train(rank, world_size, args, config):
     setup(rank, world_size)
 
-    #Grab the datasets
-    train_loader, test_loader = grab_data(args, config, rank, world_size)
-
     #set up the score-based model and parallelize
+    torch.cuda.set_device(rank)
+    torch.cuda.empty_cache()
     score = NCSNv2Deepest(config).to(rank)
     score = torch.nn.SyncBatchNorm.convert_sync_batchnorm(score)
     score = DDP(score, device_ids=[rank], output_device=rank, find_unused_parameters=False)
+
+    #Grab the datasets
+    train_loader, test_loader = grab_data(args, config, rank, world_size)
     
     #Set up the exponential moving average
     if config.model.ema:
@@ -181,6 +184,11 @@ def train(rank, world_size, args, config):
         if rank == 0:
             logging.info("\nSTARTING EPOCH " + str(epoch) + " !\n\n")
             train_epoch_start = time.time()
+            #delete the states variable afterward in order to save CUDA memory
+            mem_use = str(torch.cuda.memory_allocated(device=rank) / 2**30)
+            mem_res = str(torch.cuda.memory_reserved(device=rank) / 2**30)
+            print("\n\nGB ALLOCATED: " + mem_use)
+            print("GB RESERVED: " + mem_res + "\n\n")
 
         train_loader.sampler.set_epoch(epoch)
         epoch_train_loss = 0
@@ -191,8 +199,6 @@ def train(rank, world_size, args, config):
         score.train()
 
         for i, batch in enumerate(train_loader):
-            optimizer.zero_grad(set_to_none=True)
-
             if config.data.dataset == 'RTM_N':
                 X, y, X_perturbed, idx = batch 
                 X = X.to(rank)
@@ -214,6 +220,7 @@ def train(rank, world_size, args, config):
             else:
                 train_loss = anneal_dsm_score_estimation(score, batch, sigmas, anneal_power=config.training.anneal_power)
             
+            optimizer.zero_grad(set_to_none=True)
             train_loss.backward()
             optimizer.step()
 
@@ -232,14 +239,22 @@ def train(rank, world_size, args, config):
                 ema_helper.update(score)
             
             with torch.no_grad():
-                epoch_train_loss += train_loss * X.shape[0] #adding sum instead of mean loss
+                epoch_train_loss += train_loss.item() * X.shape[0] #adding sum instead of mean loss
                 num_samples += X.shape[0]
 
             step += 1
+        
+        #try to free up GPU memory
+        score.module.zero_grad(set_to_none=True)
+        del X
+        if config.data.dataset == 'RTM_N':
+            del X_perturbed
+        gc.collect()
+        torch.cuda.empty_cache()
 
         #gather communal stats for the epoch
         torch.cuda.set_device(rank)
-        data = {"epoch_train_loss": epoch_train_loss.item(),
+        data = {"epoch_train_loss": epoch_train_loss,
                 "num_samples": num_samples}
         if config.model.sigma_dist == 'rtm_dynamic':
             data["total_n_shots_count_epoch"] = total_n_shots_count_epoch
@@ -247,42 +262,48 @@ def train(rank, world_size, args, config):
         outputs = [None for _ in range(world_size)]
         dist.all_gather_object(outputs, data)
 
-        #compile communal stats
-        total_train_loss = 0
-        ns = 0
-        for out in outputs:
-            total_train_loss += out["epoch_train_loss"]
-            ns += out["num_samples"]
-            if config.model.sigma_dist == 'rtm_dynamic':
-                total_n_shots_count += out["total_n_shots_count_epoch"]
-                sigmas_running += out["sigmas_running_epoch"]
-        epoch_train_loss = total_train_loss / ns
+        # #compile communal stats
+        # total_train_loss = 0
+        # ns = 0
+        # for out in outputs:
+        #     total_train_loss += out["epoch_train_loss"]
+        #     ns += out["num_samples"]
+        #     if config.model.sigma_dist == 'rtm_dynamic':
+        #         total_n_shots_count += out["total_n_shots_count_epoch"].to(rank)
+        #         sigmas_running += out["sigmas_running_epoch"].to(rank)
+        # epoch_train_loss = total_train_loss / ns
 
-        #update sigmas if necessary
-        if config.model.sigma_dist == 'rtm_dynamic':
-            offset_eps = 1e-8
-            sigmas = (sigmas_running + offset_eps) / (total_n_shots_count + offset_eps)
-            score.module.set_sigmas(sigmas)
+        # #update sigmas if necessary
+        # if config.model.sigma_dist == 'rtm_dynamic':
+        #     offset_eps = 1e-8
+        #     sigmas = (sigmas_running + offset_eps) / (total_n_shots_count + offset_eps)
+        #     score.module.set_sigmas(sigmas)
 
-        #print training epoch stats
-        if rank == 0:
-            logging.info("\n\nFINISHED TRAIN EPOCH!\n\n")
-            train_epoch_end = time.time()
-            logging.info("TRAIN EPOCH TIME: " + str(train_epoch_end - train_epoch_start))
+        # #print training epoch stats
+        # if rank == 0:
+        #     logging.info("\n\nFINISHED TRAIN EPOCH!\n\n")
+        #     train_epoch_end = time.time()
+        #     logging.info("TRAIN EPOCH TIME: " + str(train_epoch_end - train_epoch_start))
 
-            tb_logger.add_scalar('mean_train_loss_epoch', epoch_train_loss, global_step=epoch)
-            logging.info("Epoch mean train loss: {}".format(epoch_train_loss))
+        #     tb_logger.add_scalar('mean_train_loss_epoch', epoch_train_loss, global_step=epoch)
+        #     logging.info("Epoch mean train loss: {}".format(epoch_train_loss))
+
+        #try to free up GPU memory
+        del outputs
+        del data
+        gc.collect()
+        torch.cuda.empty_cache()
 
         #check if we need to checkpoint
-        if epoch % config.training.checkpoint_freq == 0:
+        if (epoch + 1) % config.training.checkpoint_freq == 0:
             if rank == 0:
                 logging.info("\nSAVING CHECKPOINT\n\n")
                 checkpoint_start = time.time()
 
                 if config.model.sigma_dist == 'rtm_dynamic':
-                    np.savetxt(os.path.join(args.log_sample_path, 'sigmas_{}.txt'.format(epoch)), sigmas.detach().numpy())
-                    np.savetxt(os.path.join(args.log_sample_path, 'shot_count_{}.txt'.format(epoch)), total_n_shots_count.detach().numpy())
-                    np.savetxt(os.path.join(args.log_sample_path, 'sigmas_running_{}.txt'.format(epoch)), sigmas_running.detach().numpy())
+                    np.savetxt(os.path.join(args.log_sample_path, 'sigmas_{}.txt'.format(epoch)), sigmas.detach().cpu().numpy())
+                    np.savetxt(os.path.join(args.log_sample_path, 'shot_count_{}.txt'.format(epoch)), total_n_shots_count.detach().cpu().numpy())
+                    np.savetxt(os.path.join(args.log_sample_path, 'sigmas_running_{}.txt'.format(epoch)), sigmas_running.detach().cpu().numpy())
 
                 if config.model.ema:
                     if config.model.sigma_dist == 'rtm_dynamic':
@@ -305,7 +326,7 @@ def train(rank, world_size, args, config):
             dist.barrier() 
 
         #check if we want to perform a test epoch
-        if epoch % config.training.test_freq == 0:
+        if (epoch + 1) % config.training.test_freq == 0:
             if rank == 0:
                 logging.info("\nSTARTING TEST EPOCH!\n\n")
                 test_epoch_start = time.time()
@@ -341,14 +362,20 @@ def train(rank, world_size, args, config):
                     else:
                         test_loss = anneal_dsm_score_estimation(test_score, batch, sigmas, anneal_power=config.training.anneal_power)
                 
-                    epoch_test_loss += test_loss * X.shape[0]
+                    epoch_test_loss += test_loss.item() * X.shape[0]
                     num_samples += X.shape[0]
             
+            #try to free up GPU memory
             del test_score
+            del X
+            if config.data.dataset == 'RTM_N':
+                del X_perturbed
+            gc.collect()
+            torch.cuda.empty_cache()
 
             #gather communal stats for the epoch
             torch.cuda.set_device(rank)
-            data = {"epoch_test_loss": epoch_test_loss.item(),
+            data = {"epoch_test_loss": epoch_test_loss,
                     "num_samples": num_samples}
             outputs = [None for _ in range(world_size)]
             dist.all_gather_object(outputs, data)
@@ -369,9 +396,15 @@ def train(rank, world_size, args, config):
 
                 tb_logger.add_scalar('mean_test_loss_epoch', epoch_test_loss, global_step=epoch)
                 logging.info("Epoch mean test loss: {}".format(epoch_test_loss))
+
+            #try to free up GPU memory
+            del data
+            del output
+            gc.collect()
+            torch.cuda.empty_cache()
     
         #check if we would like to sample from the score network
-        if epoch % config.training.sample_freq == 0:
+        if (epoch + 1) % config.training.sample_freq == 0:
             if rank == 0:
                 logging.info("\nSTARTING SAMPLING!\n\n")
                 sample_start = time.time()
@@ -394,7 +427,7 @@ def train(rank, world_size, args, config):
                 slice_ids = []
                 shot_idxs = []
                 for i in range(num_test_samples):
-                    X, y, X_perturbed, idx = test_loader.dataset.get_samples(index=i, shot_idx=n_shots[config.sampling.shot_idx])
+                    X, y, X_perturbed, idx = test_loader.dataset.dataset.get_samples(index=i, shot_idx=config.sampling.shot_idx)
                     init_samples[i] = X_perturbed.to(rank)
                     true_samples[i] = X.to(rank)
                     slice_ids.append(y)
@@ -405,7 +438,11 @@ def train(rank, world_size, args, config):
                                 n_steps_each=config.sampling.n_steps_each, step_lr=config.sampling.step_lr, \
                                 final_only=config.sampling.final_only, verbose=True if rank == 0 else False,\
                                 denoise=config.sampling.denoise, add_noise=config.sampling.add_noise)
+
+            #try to free up GPU memory
             del test_score
+            gc.collect()
+            torch.cuda.empty_cache()
 
             #gather samples
             torch.cuda.set_device(rank)
@@ -431,7 +468,7 @@ def train(rank, world_size, args, config):
                 if config.data.dataset == 'RTM_N':
                     init_samples = torch.cat((init_samples, out["init_samples"].to(rank)), 0) \
                                         if init_samples is not None else out["init_samples"].to(rank)
-                    true_samples = torch.cat((true_samples, out["true_samples"]), 0) \
+                    true_samples = torch.cat((true_samples, out["true_samples"].to(rank)), 0) \
                                         if true_samples is not None else out["true_samples"].to(rank)
                     slice_ids.extend(out["slice_ids"])
                     shot_idxs.extend(out["shot_idxs"])
@@ -463,10 +500,15 @@ def train(rank, world_size, args, config):
                 train_epoch_end = time.time()
                 logging.info("SAMPLING TIME: " + str(train_epoch_end - train_epoch_start))
 
+            #try to free up GPU memory
             del init_samples
             del output_samples
+            del data
+            del outputs
             if config.data.dataset == 'RTM_N':
                 del true_samples
+            gc.collect()
+            torch.cuda.empty_cache()
         
         #finish off epoch
         if rank == 0:
