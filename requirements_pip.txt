@@ -1,0 +1,125 @@
+absl-py==0.13.0
+alabaster==0.7.12
+antlr4-python3-runtime==4.8
+Babel @ file:///tmp/build/80754af9/babel_1620871417480/work
+blinker==1.4
+Bottleneck==1.3.2
+brotlipy==0.7.0
+cached-property @ file:///tmp/build/80754af9/cached-property_1600785575025/work
+cachetools==4.2.2
+certifi==2021.5.30
+cffi @ file:///root/worker/containers/0000302spsn/tmp/build/80754af9/cffi_1625814737803/work
+chardet @ file:///root/worker/containers/00002k1a3ra/tmp/build/80754af9/chardet_1607706785795/work
+cloudpickle @ file:///tmp/build/80754af9/cloudpickle_1598884132938/work
+colorlog==6.6.0
+conda-pack @ file:///tmp/build/80754af9/conda-pack_1611163042455/work
+cryptography @ file:///root/worker/containers/00000aq4h59/tmp/build/80754af9/cryptography_1616769286476/work
+cycler==0.10.0
+cytoolz==0.11.0
+dask @ file:///tmp/build/80754af9/dask-core_1627943503496/work
+distro==1.6.0
+docutils @ file:///root/worker/containers/00002tkjd1m/tmp/build/80754af9/docutils_1620828011443/work
+fancycompleter==0.9.1
+fonttools==4.25.0
+fsspec @ file:///tmp/build/80754af9/fsspec_1626383727127/work
+glob2 @ file:///home/linux1/recipes/ci/glob2_1610991677669/work
+google-auth==1.34.0
+google-auth-oauthlib==0.4.5
+grpcio==1.39.0
+h5py @ file:///root/worker/containers/000022if2h3/tmp/build/80754af9/h5py_1622088476934/work
+HeapDict==1.0.1
+hydra-colorlog==1.1.0
+hydra-core==1.1.1
+idna @ file:///home/linux1/recipes/ci/idna_1610986105248/work
+imageio @ file:///tmp/build/80754af9/imageio_1617700267927/work
+imagesize @ file:///Users/ktietz/demo/mc3/conda-bld/imagesize_1628863108022/work
+importlib-metadata==4.6.3
+importlib-resources==5.4.0
+Jinja2 @ file:///tmp/build/80754af9/jinja2_1624781299557/work
+joblib @ file:///tmp/build/80754af9/joblib_1613502643832/work
+kiwisolver @ file:///root/worker/containers/00002no46h8/tmp/build/80754af9/kiwisolver_1612282482112/work
+llvmlite==0.36.0
+lmdb==1.2.1
+locket==0.2.1
+Markdown==3.3.4
+MarkupSafe @ file:///root/worker/containers/00001eullo0/tmp/build/80754af9/markupsafe_1621528182011/work
+matplotlib @ file:///root/worker/containers/00002g390cr/tmp/build/80754af9/matplotlib-suite_1628011459002/work
+munkres==1.1.4
+networkx @ file:///tmp/build/80754af9/networkx_1627459939258/work
+numba @ file:///root/worker/containers/00002vug29a/tmp/build/80754af9/numba_1616774264720/work
+numexpr @ file:///root/worker/containers/00003u8rj1s/tmp/build/80754af9/numexpr_1618856547501/work
+numpy @ file:///root/worker/containers/00000nhulca/tmp/build/80754af9/numpy_and_numpy_base_1626271824855/work
+numpydoc @ file:///tmp/build/80754af9/numpydoc_1605117425582/work
+oauthlib @ file:///tmp/build/80754af9/oauthlib_1623060228408/work
+olefile==0.46
+omegaconf==2.1.1
+p5py==1.0.0
+packaging==21.0
+pandas==1.3.1
+partd @ file:///tmp/build/80754af9/partd_1618000087440/work
+pathlib2 @ file:///root/worker/containers/000005405u8/tmp/build/80754af9/pathlib2_1625585717617/work
+pdbpp==0.10.3
+pep517==0.11.0
+pep8==1.7.1
+Pillow @ file:///root/worker/containers/000023atmht/tmp/build/80754af9/pillow_1625655880295/work
+pkginfo==1.7.1
+protobuf==3.8.0
+protobuf3-to-dict==0.1.5
+pyasn1==0.4.8
+pyasn1-modules==0.2.8
+pycparser @ file:///tmp/build/80754af9/pycparser_1594388511720/work
+Pygments @ file:///tmp/build/80754af9/pygments_1621606182707/work
+PyJWT @ file:///root/worker/containers/00003jfhu6i/tmp/build/80754af9/pyjwt_1619651632714/work
+pykerberos==1.2.1
+pyOpenSSL @ file:///tmp/build/80754af9/pyopenssl_1608057966937/work
+pyparsing==2.4.7
+pyrepl==0.9.0
+PySocks @ file:///root/worker/containers/00002ha699u/tmp/build/80754af9/pysocks_1594394604255/work
+python-dateutil @ file:///tmp/build/80754af9/python-dateutil_1626374649649/work
+pytz @ file:///tmp/build/80754af9/pytz_1612215392582/work
+PyWavelets @ file:///root/worker/containers/000019s3rej/tmp/build/80754af9/pywavelets_1601658373928/work
+PyYAML==5.4.1
+requests @ file:///tmp/build/80754af9/requests_1608241421344/work
+requests-kerberos==0.12.0
+requests-oauthlib==1.3.0
+retrying==1.3.3
+rope @ file:///tmp/build/80754af9/rope_1623703006312/work
+rsa @ file:///tmp/build/80754af9/rsa_1614366226499/work
+ruamel.yaml==0.17.10
+ruamel.yaml.clib==0.2.6
+scikit-build==0.12.0
+scikit-image==0.18.1
+scikit-learn @ file:///root/worker/containers/00000ks5s83/tmp/build/80754af9/scikit-learn_1621370422999/work
+scipy @ file:///root/worker/containers/00003u8rj1p/tmp/build/80754af9/scipy_1618855968470/work
+seaborn @ file:///tmp/build/80754af9/seaborn_1608578541026/work
+six==1.13.0
+snowballstemmer @ file:///tmp/build/80754af9/snowballstemmer_1611258885636/work
+Sphinx @ file:///tmp/build/80754af9/sphinx_1623884544367/work
+sphinxcontrib-applehelp @ file:///home/ktietz/src/ci/sphinxcontrib-applehelp_1611920841464/work
+sphinxcontrib-devhelp @ file:///home/ktietz/src/ci/sphinxcontrib-devhelp_1611920923094/work
+sphinxcontrib-htmlhelp @ file:///tmp/build/80754af9/sphinxcontrib-htmlhelp_1623945626792/work
+sphinxcontrib-jsmath @ file:///home/ktietz/src/ci/sphinxcontrib-jsmath_1611920942228/work
+sphinxcontrib-qthelp @ file:///home/ktietz/src/ci/sphinxcontrib-qthelp_1611921055322/work
+sphinxcontrib-serializinghtml @ file:///tmp/build/80754af9/sphinxcontrib-serializinghtml_1624451540180/work
+sphinxcontrib-websupport @ file:///tmp/build/80754af9/sphinxcontrib-websupport_1597081412696/work
+tensorboard==2.6.0
+tensorboard-data-server==0.6.1
+tensorboard-plugin-wit==1.8.0
+threadpoolctl @ file:///Users/ktietz/demo/mc3/conda-bld/threadpoolctl_1628668762525/work
+tifffile==2020.10.1
+tomli==1.2.1
+toolz @ file:///home/linux1/recipes/ci/toolz_1610987900194/work
+torch @ file:///scratch/projects/sparkcognition/pytorch/torch-1.8.0a0%2B56b43f4-cp37-cp37m-linux_ppc64le.whl
+torchvision @ file:///scratch/projects/sparkcognition/pytorch/torchvision-0.9.0a0%2B8fb5838-cp37-cp37m-linux_ppc64le.whl
+tornado @ file:///root/worker/containers/000010552mb/tmp/build/80754af9/tornado_1606942328368/work
+tqdm @ file:///tmp/build/80754af9/tqdm_1627710282869/work
+typing-extensions==3.10.0.0
+unicodecsv==0.14.1
+urllib3 @ file:///tmp/build/80754af9/urllib3_1625084269274/work
+Werkzeug==2.0.1
+wmctrl==0.4
+xlrd @ file:///tmp/build/80754af9/xlrd_1608072521494/work
+XlsxWriter @ file:///tmp/build/80754af9/xlsxwriter_1628603415431/work
+xlwt==1.3.0
+zict==2.0.0
+zipp==3.5.0
