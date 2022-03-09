@@ -34,7 +34,7 @@ def setup(rank, world_size):
 def cleanup():
     dist.destroy_process_group()
 
-def grab_data(args, config, rank, world_size, pin_memory=False):
+def grab_data(args, config, rank, world_size, pin_memory=False): #TODO this should be false
     dataset, test_dataset = get_dataset(args, config)
 
     train_sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=False)
@@ -508,6 +508,7 @@ def train(rank, world_size, args, config):
             logging.info("\n\nFINISHED EPOCH!\n\n")
             train_epoch_end = time.time()
             logging.info("TOTAL EPOCH TIME: " + str(timedelta(seconds=(train_epoch_end - train_epoch_start)//1)))
+            logging.info("TOTAL TRAINING TIME: " + str(timedelta(seconds=(train_epoch_end - train_start)//1)))
 
     #finish distributed processes
     cleanup()

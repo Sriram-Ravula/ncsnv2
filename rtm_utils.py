@@ -47,11 +47,14 @@ def clipFilter(im, qmax, qmin):
     im = np.clip(im, a_min=sorted_im[min_idx], a_max = sorted_im[max_idx - 1])
     return im
 
-def maskFilter(im, vel):
+def maskFilter(im, vel, threshold=1.65, return_mask = False):
     mask = np.ones(vel.shape)
-    x,y = np.where(vel < 1.5)
+    x,y = np.where(vel < threshold)
     mask[x,y] = 0
-    return mask * im
+    if return_mask:
+        return mask * im, mask
+    else:
+        return mask * im
 
 def normalizeFilter(im):
     return (im - np.min(im))/(np.max(im) - np.min(im))
