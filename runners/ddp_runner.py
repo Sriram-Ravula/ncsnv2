@@ -4,6 +4,7 @@ import tqdm
 import logging
 import os
 import time
+from datetime import timedelta
 import gc
 
 import torch
@@ -156,7 +157,7 @@ def train(rank, world_size, args, config):
         if rank == 0:
             logging.info("\n\nFINISHED LOADING FROM CHECKPOINT!\n\n")
             toc = time.time()
-            logging.info("TIME ELAPSED: " + str(toc - tic))
+            logging.info("TIME ELAPSED: " + str(timedelta(seconds=(toc-tic)//1)))
     
     #set up logging (rank 0 only)
     if rank == 0:
@@ -184,18 +185,16 @@ def train(rank, world_size, args, config):
         if rank == 0:
             logging.info("\nSTARTING EPOCH " + str(epoch) + " !\n\n")
             train_epoch_start = time.time()
-            #delete the states variable afterward in order to save CUDA memory
-            mem_use = str(torch.cuda.memory_allocated(device=rank) / 2**30)
-            mem_res = str(torch.cuda.memory_reserved(device=rank) / 2**30)
-            print("\n\nGB ALLOCATED: " + mem_use)
-            print("GB RESERVED: " + mem_res + "\n\n")
 
-        train_loader.sampler.set_epoch(epoch)
-        epoch_train_loss = 0
-        num_samples = 0
+        train_loader.sampler.set_epoch(epoch) #in DDP we must tell distributed samplers what epoch it is for randomization
+
+        #prepare counters for epoch stats
+        epoch_train_loss = torch.zeros(1, device=rank) 
+        num_samples = torch.zeros(1, device=rank)
         if config.model.sigma_dist == 'rtm_dynamic':
             total_n_shots_count_epoch = torch.zeros(n_shots.numel(), device=rank)
             sigmas_running_epoch = torch.zeros(n_shots.numel(), device=rank)
+
         score.train()
 
         for i, batch in enumerate(train_loader):
@@ -227,19 +226,19 @@ def train(rank, world_size, args, config):
             #log batch stats
             if rank == 0:
                 tb_logger.add_scalar('mean_train_loss_batch', train_loss.item(), global_step=step)
-                logging.info("step: {}, Batch mean train loss: {}".format(step, train_loss.item()))
+                logging.info("step: {}, Batch mean train loss: {:.1f}".format(step, train_loss.item()))
                 if step == 0:
                     tb_logger.add_image('training_rtm_243', make_grid(X, 4), global_step=step)
                     if config.data.dataset == 'RTM_N':
                         tb_logger.add_image('training_rtm_n', make_grid(X_perturbed, 4), global_step=step)
-                        np.savetxt(os.path.join(args.log_sample_path, 'train_slice_ids_{}.txt'.format(step)), y)
-                        np.savetxt(os.path.join(args.log_sample_path, 'train_nshots_idx_{}.txt'.format(step)), idx)
+                        # np.savetxt(os.path.join(args.log_path, 'train_slice_ids_{}.txt'.format(step)), y)
+                        # np.savetxt(os.path.join(args.log_path, 'train_nshots_idx_{}.txt'.format(step)), idx)
         
             if config.model.ema:
                 ema_helper.update(score)
             
             with torch.no_grad():
-                epoch_train_loss += train_loss.item() * X.shape[0] #adding sum instead of mean loss
+                epoch_train_loss += train_loss * X.shape[0] #adding sum instead of mean loss
                 num_samples += X.shape[0]
 
             step += 1
@@ -252,45 +251,38 @@ def train(rank, world_size, args, config):
         gc.collect()
         torch.cuda.empty_cache()
 
-        #gather communal stats for the epoch
-        torch.cuda.set_device(rank)
-        data = {"epoch_train_loss": epoch_train_loss,
-                "num_samples": num_samples}
+        #compile all epoch stats across all GPUs
+        dist.all_reduce(epoch_train_loss, op=dist.ReduceOp.SUM)
+        dist.all_reduce(num_samples, op=dist.ReduceOp.SUM)
         if config.model.sigma_dist == 'rtm_dynamic':
-            data["total_n_shots_count_epoch"] = total_n_shots_count_epoch
-            data["sigmas_running_epoch"] = sigmas_running_epoch
-        outputs = [None for _ in range(world_size)]
-        dist.all_gather_object(outputs, data)
+            dist.all_reduce(total_n_shots_count_epoch, op=dist.ReduceOp.SUM)
+            dist.all_reduce(sigmas_running_epoch, op=dist.ReduceOp.SUM)
+        
+        #reduce over stats
+        epoch_train_loss = epoch_train_loss / num_samples
+        if config.model.sigma_dist == 'rtm_dynamic':
+            total_n_shots_count += total_n_shots_count_epoch
+            sigmas_running += sigmas_running_epoch
 
-        # #compile communal stats
-        # total_train_loss = 0
-        # ns = 0
-        # for out in outputs:
-        #     total_train_loss += out["epoch_train_loss"]
-        #     ns += out["num_samples"]
-        #     if config.model.sigma_dist == 'rtm_dynamic':
-        #         total_n_shots_count += out["total_n_shots_count_epoch"].to(rank)
-        #         sigmas_running += out["sigmas_running_epoch"].to(rank)
-        # epoch_train_loss = total_train_loss / ns
+            offset_eps = 1e-8
+            sigmas = (sigmas_running + offset_eps) / (total_n_shots_count + offset_eps)
+            score.module.set_sigmas(sigmas)
 
-        # #update sigmas if necessary
-        # if config.model.sigma_dist == 'rtm_dynamic':
-        #     offset_eps = 1e-8
-        #     sigmas = (sigmas_running + offset_eps) / (total_n_shots_count + offset_eps)
-        #     score.module.set_sigmas(sigmas)
+        #print training epoch stats
+        if rank == 0:
+            logging.info("\n\nFINISHED TRAIN EPOCH!\n\n")
+            train_epoch_end = time.time()
+            logging.info("TRAIN EPOCH TIME: " + str(timedelta(seconds=(train_epoch_end-train_epoch_start)//1)))
 
-        # #print training epoch stats
-        # if rank == 0:
-        #     logging.info("\n\nFINISHED TRAIN EPOCH!\n\n")
-        #     train_epoch_end = time.time()
-        #     logging.info("TRAIN EPOCH TIME: " + str(train_epoch_end - train_epoch_start))
-
-        #     tb_logger.add_scalar('mean_train_loss_epoch', epoch_train_loss, global_step=epoch)
-        #     logging.info("Epoch mean train loss: {}".format(epoch_train_loss))
+            tb_logger.add_scalar('mean_train_loss_epoch', epoch_train_loss.item(), global_step=epoch)
+            logging.info("Epoch mean train loss: {:.1f}".format(epoch_train_loss.item()))
 
         #try to free up GPU memory
-        del outputs
-        del data
+        del epoch_train_loss
+        del num_samples
+        if config.model.sigma_dist == 'rtm_dynamic':
+            del total_n_shots_count_epoch
+            del sigmas_running_epoch
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -301,9 +293,9 @@ def train(rank, world_size, args, config):
                 checkpoint_start = time.time()
 
                 if config.model.sigma_dist == 'rtm_dynamic':
-                    np.savetxt(os.path.join(args.log_sample_path, 'sigmas_{}.txt'.format(epoch)), sigmas.detach().cpu().numpy())
-                    np.savetxt(os.path.join(args.log_sample_path, 'shot_count_{}.txt'.format(epoch)), total_n_shots_count.detach().cpu().numpy())
-                    np.savetxt(os.path.join(args.log_sample_path, 'sigmas_running_{}.txt'.format(epoch)), sigmas_running.detach().cpu().numpy())
+                    np.savetxt(os.path.join(args.log_path, 'sigmas_{}.txt'.format(epoch)), sigmas.detach().cpu().numpy())
+                    np.savetxt(os.path.join(args.log_path, 'shot_count_{}.txt'.format(epoch)), total_n_shots_count.detach().cpu().numpy())
+                    np.savetxt(os.path.join(args.log_path, 'sigmas_running_{}.txt'.format(epoch)), sigmas_running.detach().cpu().numpy())
 
                 if config.model.ema:
                     if config.model.sigma_dist == 'rtm_dynamic':
@@ -319,7 +311,7 @@ def train(rank, world_size, args, config):
             if rank == 0:
                 logging.info("\n\nFINISHED CHECKPOINTING!\n\n")
                 checkpoint_end = time.time()
-                logging.info("CHECKPOINT TIME: " + str(checkpoint_end - checkpoint_start))
+                logging.info("CHECKPOINT TIME: " + str(timedelta(seconds=(checkpoint_end-checkpoint_start)//1)))
 
             #keep processes from moving on until rank 0 has finished saving
             #this prevents changes to the state variables while saving                          
@@ -337,9 +329,11 @@ def train(rank, world_size, args, config):
                 test_score = score
             test_score.eval()
 
-            test_loader.sampler.set_epoch(epoch)
-            epoch_test_loss = 0
-            num_samples = 0
+            test_loader.sampler.set_epoch(epoch) #in DDP we must tell distributed samplers what epoch it is for randomization
+
+            #prepare counters for epoch stats
+            epoch_test_loss = torch.zeros(1, device=rank) 
+            num_samples = torch.zeros(1, device=rank)
 
             for i, batch in enumerate(test_loader):
                 if config.data.dataset == 'RTM_N':
@@ -362,7 +356,7 @@ def train(rank, world_size, args, config):
                     else:
                         test_loss = anneal_dsm_score_estimation(test_score, batch, sigmas, anneal_power=config.training.anneal_power)
                 
-                    epoch_test_loss += test_loss.item() * X.shape[0]
+                    epoch_test_loss += test_loss * X.shape[0]
                     num_samples += X.shape[0]
             
             #try to free up GPU memory
@@ -373,33 +367,23 @@ def train(rank, world_size, args, config):
             gc.collect()
             torch.cuda.empty_cache()
 
-            #gather communal stats for the epoch
-            torch.cuda.set_device(rank)
-            data = {"epoch_test_loss": epoch_test_loss,
-                    "num_samples": num_samples}
-            outputs = [None for _ in range(world_size)]
-            dist.all_gather_object(outputs, data)
-
-            #compile communal stats
-            total_test_loss = 0
-            ns = 0
-            for out in outputs:
-                total_test_loss += out["epoch_test_loss"]
-                ns += out["num_samples"]
-            epoch_test_loss = total_test_loss / ns
+            #compile all epoch stats across all GPUs
+            dist.all_reduce(epoch_test_loss, op=dist.ReduceOp.SUM)
+            dist.all_reduce(num_samples, op=dist.ReduceOp.SUM)
+            epoch_test_loss = epoch_test_loss / num_samples
 
             #print test epoch stats
             if rank == 0:
                 logging.info("\n\nFINISHED TEST EPOCH!\n\n")
                 test_epoch_end = time.time()
-                logging.info("TEST EPOCH TIME: " + str(test_epoch_end - test_epoch_start))
+                logging.info("TEST EPOCH TIME: " + str(timedelta(seconds=(test_epoch_end-test_epoch_start)//1)))
 
-                tb_logger.add_scalar('mean_test_loss_epoch', epoch_test_loss, global_step=epoch)
-                logging.info("Epoch mean test loss: {}".format(epoch_test_loss))
+                tb_logger.add_scalar('mean_test_loss_epoch', epoch_test_loss.item(), global_step=epoch)
+                logging.info("Epoch mean test loss: {:.1f}".format(epoch_test_loss.item()))
 
             #try to free up GPU memory
-            del data
-            del output
+            del epoch_test_loss
+            del num_samples
             gc.collect()
             torch.cuda.empty_cache()
     
@@ -424,17 +408,20 @@ def train(rank, world_size, args, config):
             if config.data.dataset == 'RTM_N':
                 true_samples = torch.zeros(num_test_samples, config.data.channels, config.data.image_size, 
                                                 config.data.image_size, device=rank)
-                slice_ids = []
-                shot_idxs = []
+                slice_ids = torch.zeros(num_test_samples, device=rank)
+                shot_idxs = torch.zeros(num_test_samples, device=rank)
                 for i in range(num_test_samples):
                     X, y, X_perturbed, idx = test_loader.dataset.dataset.get_samples(index=i, shot_idx=config.sampling.shot_idx)
                     init_samples[i] = X_perturbed.to(rank)
                     true_samples[i] = X.to(rank)
-                    slice_ids.append(y)
-                    shot_idxs.append(idx)
+                    slice_ids[i] = torch.tensor(y, device=rank)
+                    shot_idxs[i] = torch.tensor(idx, device=rank)
             
             #generate the samples
-            output_samples = anneal_Langevin_dynamics(x_mod=init_samples, scorenet=test_score, sigmas=sigmas,\
+            sigma_start_idx = 0
+            if config.data.dataset == 'RTM_N':
+                sigma_start_idx = config.sampling.shot_idx
+            output_samples = anneal_Langevin_dynamics(x_mod=init_samples, scorenet=test_score, sigmas=sigmas[sigma_start_idx:],\
                                 n_steps_each=config.sampling.n_steps_each, step_lr=config.sampling.step_lr, \
                                 final_only=config.sampling.final_only, verbose=True if rank == 0 else False,\
                                 denoise=config.sampling.denoise, add_noise=config.sampling.add_noise)
@@ -444,34 +431,35 @@ def train(rank, world_size, args, config):
             gc.collect()
             torch.cuda.empty_cache()
 
-            #gather samples
-            torch.cuda.set_device(rank)
-            data = {"output_samples": output_samples[-1]}
-            if config.data.dataset == 'RTM_N':
-                data["init_samples"] = init_samples
-                data["slice_ids"] = slice_ids
-                data["shot_idxs"] = shot_idxs
-                data["true_samples"] = true_samples
-            outputs = [None for _ in range(world_size)]
-            dist.all_gather_object(outputs, data)
+            #compile all sampling stats and samples across GPUs
+            out_samples = [torch.zeros_like(output_samples[-1]) for _ in range(world_size)]
+            dist.all_gather(out_samples, output_samples[-1])
 
-            #compile the results
-            output_samples = None
             if config.data.dataset == 'RTM_N':
-                init_samples = None
-                true_samples = None
-                slice_ids = []
-                shot_idxs = []
-            for out in outputs:
-                output_samples = torch.cat((output_samples, out["output_samples"].to(rank)), 0) \
-                                    if output_samples is not None else out["output_samples"].to(rank)
+                in_samples = [torch.zeros_like(init_samples) for _ in range(world_size)]
+                dist.all_gather(in_samples, init_samples)
+
+                ground_truth_samples = [torch.zeros_like(true_samples) for _ in range(world_size)]
+                dist.all_gather(ground_truth_samples, true_samples)
+
+                slice_ids_all = [torch.zeros_like(slice_ids) for _ in range(world_size)]
+                dist.all_gather(slice_ids_all, slice_ids)
+
+                shot_idxs_all = [torch.zeros_like(shot_idxs) for _ in range(world_size)]
+                dist.all_gather(shot_idxs_all, shot_idxs)
+            
+            #reduce over the gathered stuff
+            if rank == 0:
+                output_samples = torch.cat(out_samples)
                 if config.data.dataset == 'RTM_N':
-                    init_samples = torch.cat((init_samples, out["init_samples"].to(rank)), 0) \
-                                        if init_samples is not None else out["init_samples"].to(rank)
-                    true_samples = torch.cat((true_samples, out["true_samples"].to(rank)), 0) \
-                                        if true_samples is not None else out["true_samples"].to(rank)
-                    slice_ids.extend(out["slice_ids"])
-                    shot_idxs.extend(out["shot_idxs"])
+                    init_samples = torch.cat(in_samples)
+                    true_samples = torch.cat(ground_truth_samples)
+
+                    slice_ids = [slice_ids_all[i].detach().cpu().numpy() for i in range(len(slice_ids_all))]
+                    slice_ids = np.concatenate(slice_ids)
+
+                    shot_idxs = [shot_idxs_all[i].detach().cpu().numpy() for i in range(len(shot_idxs_all))]
+                    shot_idxs = np.concatenate(shot_idxs)
             
             #save and log and stuff
             if rank == 0:
@@ -483,7 +471,7 @@ def train(rank, world_size, args, config):
                     mse = torch.nn.MSELoss()(output_samples, true_samples)
 
                     tb_logger.add_scalar('sample_mse', mse.item(), global_step=epoch)
-                    logging.info("Sample MSE: {}".format(mse.item()))
+                    logging.info("Sample MSE: {:.3f}".format(mse.item()))
 
                     np.savetxt(os.path.join(args.log_sample_path, 'sample_slice_ids_{}.txt'.format(epoch)), slice_ids)
                     np.savetxt(os.path.join(args.log_sample_path, 'sample_shot_idxs_{}.txt'.format(epoch)), shot_idxs)
@@ -497,16 +485,21 @@ def train(rank, world_size, args, config):
                     tb_logger.add_image('true_samples', image_grid, global_step=epoch)
 
                 logging.info("\n\nFINISHED SAMPLING!\n\n")
-                train_epoch_end = time.time()
-                logging.info("SAMPLING TIME: " + str(train_epoch_end - train_epoch_start))
+                sample_end = time.time()
+                logging.info("SAMPLING TIME: " + str(timedelta(seconds=(sample_end-sample_start)//1)))
 
             #try to free up GPU memory
             del init_samples
             del output_samples
-            del data
-            del outputs
+            del out_samples
             if config.data.dataset == 'RTM_N':
+                del in_samples
                 del true_samples
+                del ground_truth_samples
+                del slice_ids
+                del slice_ids_all
+                del shot_idxs
+                del shot_idxs_all
             gc.collect()
             torch.cuda.empty_cache()
         
@@ -514,7 +507,7 @@ def train(rank, world_size, args, config):
         if rank == 0:
             logging.info("\n\nFINISHED EPOCH!\n\n")
             train_epoch_end = time.time()
-            logging.info("TOTAL EPOCH TIME: " + str(train_epoch_end - train_epoch_start))
+            logging.info("TOTAL EPOCH TIME: " + str(timedelta(seconds=(train_epoch_end - train_epoch_start)//1)))
 
     #finish distributed processes
     cleanup()
