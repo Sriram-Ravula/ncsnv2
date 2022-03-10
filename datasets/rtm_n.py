@@ -68,9 +68,6 @@ class RTM_N(TensorDataset):
             self.H, self.W = self.tensors.shape[-2:]
         
         if self.debug:
-            #TODO delete the enxt two debugging lines!
-            self.tensors = self.tensors[0:256]
-            self.slices = self.slices[0:256]
             toc = time.time()
             print("TIME ELAPSED: ", str(toc - tic))
             print("Finished building dataset!")

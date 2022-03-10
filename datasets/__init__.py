@@ -6,6 +6,7 @@ from datasets.celeba import CelebA
 from datasets.ffhq import FFHQ
 from datasets.velocity_fine import Velocity
 from datasets.rtm_n import RTM_N
+from datasets.ibalt import Ibalt
 from torch.utils.data import Subset
 import numpy as np
 
@@ -185,6 +186,33 @@ def get_dataset(args, config):
         np.random.set_state(random_state)
 
         train_indices, test_indices = indices[:int(num_items * 0.975)], indices[int(num_items * 0.975):]
+        test_dataset = Subset(dataset, test_indices)
+        dataset = Subset(dataset, train_indices)
+    
+    elif config.data.dataset == 'IBALT_RTM_N':
+        tran_transform = transforms.Compose([
+            transforms.Resize(size = [config.data.image_size, config.data.image_size], \
+                interpolation=transforms.InterpolationMode.BICUBIC),    #no horizontal flip - would affect RTM_n image!
+        ])
+
+        n_shots = np.asarray(config.model.n_shots).squeeze()
+        n_shots = torch.from_numpy(n_shots)
+        #make sure it has dimension > 0 if it is a singleton (useful for indexing)
+        if n_shots.numel() == 1:
+            n_shots = torch.unsqueeze(n_shots, 0)
+
+        dataset = Ibalt(path='/scratch/08087/gandhiy/data/migration/ibalt/slices/ibaltcnvxhull_ns_so__nh401_nz1201_dh25_dz10', \
+                        transform=tran_transform, manual_hflip=config.data.random_flip, n_shots=n_shots)
+
+        num_items = len(dataset)
+        indices = list(range(num_items))
+        random_state = np.random.get_state()
+        np.random.seed(2022)
+        np.random.shuffle(indices)
+        np.random.set_state(random_state)
+
+        idx = max(1, int(num_items * 0.975))
+        train_indices, test_indices = indices[:idx], indices[idx:]
         test_dataset = Subset(dataset, test_indices)
         dataset = Subset(dataset, train_indices)
 

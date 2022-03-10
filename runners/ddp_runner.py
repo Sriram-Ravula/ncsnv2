@@ -124,7 +124,7 @@ def train(rank, world_size, args, config):
 
     #set up sigmas and any running lists
     sigmas = get_sigmas(config).to(rank)
-    if config.data.dataset == 'RTM_N':
+    if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
         n_shots = np.asarray(config.model.n_shots).squeeze()
         n_shots = torch.from_numpy(n_shots).to(rank)
         if n_shots.numel() == 1:
@@ -198,7 +198,7 @@ def train(rank, world_size, args, config):
         score.train()
 
         for i, batch in enumerate(train_loader):
-            if config.data.dataset == 'RTM_N':
+            if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
                 X, y, X_perturbed, idx = batch 
                 X = X.to(rank)
                 X_perturbed = X_perturbed.to(rank)
@@ -228,8 +228,8 @@ def train(rank, world_size, args, config):
                 tb_logger.add_scalar('mean_train_loss_batch', train_loss.item(), global_step=step)
                 logging.info("step: {}, Batch mean train loss: {:.1f}".format(step, train_loss.item()))
                 if step == 0:
-                    tb_logger.add_image('training_rtm_243', make_grid(X, 4), global_step=step)
-                    if config.data.dataset == 'RTM_N':
+                    tb_logger.add_image('training_rtm_full', make_grid(X, 4), global_step=step)
+                    if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
                         tb_logger.add_image('training_rtm_n', make_grid(X_perturbed, 4), global_step=step)
                         # np.savetxt(os.path.join(args.log_path, 'train_slice_ids_{}.txt'.format(step)), y)
                         # np.savetxt(os.path.join(args.log_path, 'train_nshots_idx_{}.txt'.format(step)), idx)
@@ -246,7 +246,7 @@ def train(rank, world_size, args, config):
         #try to free up GPU memory
         score.module.zero_grad(set_to_none=True)
         del X
-        if config.data.dataset == 'RTM_N':
+        if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
             del X_perturbed
         gc.collect()
         torch.cuda.empty_cache()
@@ -336,7 +336,7 @@ def train(rank, world_size, args, config):
             num_samples = torch.zeros(1, device=rank)
 
             for i, batch in enumerate(test_loader):
-                if config.data.dataset == 'RTM_N':
+                if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
                     X, y, X_perturbed, idx = batch 
                     X = X.to(rank)
                     X_perturbed = X_perturbed.to(rank)
@@ -362,7 +362,7 @@ def train(rank, world_size, args, config):
             #try to free up GPU memory
             del test_score
             del X
-            if config.data.dataset == 'RTM_N':
+            if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
                 del X_perturbed
             gc.collect()
             torch.cuda.empty_cache()
@@ -405,13 +405,15 @@ def train(rank, world_size, args, config):
             init_samples = torch.rand(num_test_samples, config.data.channels, config.data.image_size, 
                                             config.data.image_size, device=rank)
 
-            if config.data.dataset == 'RTM_N':
+            if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
                 true_samples = torch.zeros(num_test_samples, config.data.channels, config.data.image_size, 
                                                 config.data.image_size, device=rank)
                 slice_ids = torch.zeros(num_test_samples, device=rank)
                 shot_idxs = torch.zeros(num_test_samples, device=rank)
                 for i in range(num_test_samples):
-                    X, y, X_perturbed, idx = test_loader.dataset.dataset.get_samples(index=i, shot_idx=config.sampling.shot_idx)
+                    init_idx = i if config.data.dataset == 'RTM_N' else None #for Ibalt, we can't be sure that a given index will contain a desired k, so we choose it randomly
+                    init_k = config.sampling.shot_idx if config.data.dataset == 'RTM_N' else None
+                    X, y, X_perturbed, idx = test_loader.dataset.dataset.get_samples(index=init_idx, shot_idx=init_k)
                     init_samples[i] = X_perturbed.to(rank)
                     true_samples[i] = X.to(rank)
                     slice_ids[i] = torch.tensor(y, device=rank)
@@ -419,7 +421,7 @@ def train(rank, world_size, args, config):
             
             #generate the samples
             sigma_start_idx = 0
-            if config.data.dataset == 'RTM_N':
+            if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
                 sigma_start_idx = config.sampling.shot_idx
             output_samples = anneal_Langevin_dynamics(x_mod=init_samples, scorenet=test_score, sigmas=sigmas[sigma_start_idx:],\
                                 n_steps_each=config.sampling.n_steps_each, step_lr=config.sampling.step_lr, \
@@ -435,7 +437,7 @@ def train(rank, world_size, args, config):
             out_samples = [torch.zeros_like(output_samples[-1]) for _ in range(world_size)]
             dist.all_gather(out_samples, output_samples[-1])
 
-            if config.data.dataset == 'RTM_N':
+            if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
                 in_samples = [torch.zeros_like(init_samples) for _ in range(world_size)]
                 dist.all_gather(in_samples, init_samples)
 
@@ -451,7 +453,7 @@ def train(rank, world_size, args, config):
             #reduce over the gathered stuff
             if rank == 0:
                 output_samples = torch.cat(out_samples)
-                if config.data.dataset == 'RTM_N':
+                if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
                     init_samples = torch.cat(in_samples)
                     true_samples = torch.cat(ground_truth_samples)
 
@@ -467,7 +469,7 @@ def train(rank, world_size, args, config):
                 save_image(image_grid, os.path.join(args.log_sample_path, 'output_samples_{}.png'.format(epoch)))
                 tb_logger.add_image('output_samples', image_grid, global_step=epoch)
 
-                if config.data.dataset == 'RTM_N':
+                if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
                     mse = torch.nn.MSELoss()(output_samples, true_samples)
 
                     tb_logger.add_scalar('sample_mse', mse.item(), global_step=epoch)
@@ -492,7 +494,7 @@ def train(rank, world_size, args, config):
             del init_samples
             del output_samples
             del out_samples
-            if config.data.dataset == 'RTM_N':
+            if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
                 del in_samples
                 del true_samples
                 del ground_truth_samples
