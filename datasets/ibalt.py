@@ -43,7 +43,7 @@ class Ibalt(TensorDataset):
                     self.slices[slc_dir] = temp
 
                     if self.H == 0:
-                       self.W, self.H = np.load(os.path.join(self.path, slc_dir, 'vel.npy')).shape
+                       self.W, self.H = np.load(os.path.join(self.path, slc_dir, 'vel.npy'),allow_pickle=True).shape
 
             #[N, 1, H, W] set of filtered and pre-processed full-shot RTM images in [0, 1]
             #same order as self.slices - use this fact to index and match n_shots
@@ -145,8 +145,8 @@ class Ibalt(TensorDataset):
             slice_path = os.path.join(self.path, sid, 'slice.npy') 
             vel_path = os.path.join(self.path, sid, 'vel.npy')
 
-            img = np.load(slice_path) #these will have shape [W, H]
-            vel = np.load(vel_path) / 1000 #convert from m/s to km/s
+            img = np.load(slice_path,allow_pickle=True) #these will have shape [W, H]
+            vel = np.load(vel_path,allow_pickle=True) / 1000 #convert from m/s to km/s
 
             filtered_img = filterImage(img, vel, 0.95, 0.03, N=1, useMask=True, laplace=False, rescale=True)
             out_tensors[idx, 0] = filtered_img.T #transposed to have dims [H, W]
@@ -160,10 +160,11 @@ class Ibalt(TensorDataset):
         base_path = os.path.join(self.path, sid, n_shots) #the root of the k-shot realization directory for a given k
 
         candidates = os.listdir(base_path) #list of all the realizations of k-shot images for the given slice
+        candidates = [k for k in candidates if '.npy' in k]
         cand_name = np.random.choice(candidates) #string name of a specific random realization
 
-        img = np.load(os.path.join(base_path, cand_name)) #[W, H] unfiltered
-        vel = np.load(os.path.join(self.path, sid, 'vel.npy'))/1000 #from m/s -> km/s
+        img = np.load(os.path.join(base_path, cand_name),allow_pickle=True) #[W, H] unfiltered
+        vel = np.load(os.path.join(self.path, sid, 'vel.npy'),allow_pickle=True)/1000 #from m/s -> km/s
 
         filtered_img = filterImage(img, vel, 0.95, 0.03, N=int(n_shots.strip('nshts')), useMask=True, laplace=False, rescale=True)
 
