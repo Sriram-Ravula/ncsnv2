@@ -39,8 +39,6 @@ optional arguments:
   --comment COMMENT     A string for experiment comment
   --verbose VERBOSE     Verbose level: info | debug | warning | critical
   --resume_training     Whether to resume training
-  -i IMAGE_FOLDER, --image_folder IMAGE_FOLDER
-                        The folder name of samples
   --ni                  No interaction. Suitable for Slurm Job launcher
 ```
 
