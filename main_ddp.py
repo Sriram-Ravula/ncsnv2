@@ -66,6 +66,10 @@ def parse_args_and_config():
 
         with open(os.path.join(args.log_path, 'config.yml'), 'w') as f:
             yaml.dump(new_config, f, default_flow_style=False)
+            
+    else:
+        args.tb_path = tb_path
+        args.log_sample_path = os.path.join(args.log_path, 'samples')
 
     # setup logger
     # level = getattr(logging, args.verbose.upper(), None)

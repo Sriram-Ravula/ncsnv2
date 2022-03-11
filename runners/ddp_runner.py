@@ -133,32 +133,7 @@ def train(rank, world_size, args, config):
         if config.model.sigma_dist == 'rtm_dynamic':
             total_n_shots_count = torch.zeros(n_shots.numel(), device=rank)
             sigmas_running = torch.zeros(n_shots.numel(), device=rank)
-    
-    #check if we need to resume
-    if args.resume_training:
-        if rank == 0:
-            logging.info("\n\nRESUMING TRAINING - LOADING SAVED WEIGHTS\n\n")
-            tic = time.time()
 
-        load_path = os.path.join(args.log_path, 'checkpoint.pth')
-        eps = config.optim.eps
-
-        if config.model.ema:
-            if config.model.sigma_dist == 'rtm_dynamic':
-                start_epoch, step = resume(rank, load_path, score, eps, optimizer, ema_helper, sigmas, total_n_shots_count, sigmas_running)
-            else:
-                start_epoch, step = resume(rank, load_path, score, eps, optimizer, ema_helper)
-        else:
-            if config.model.sigma_dist == 'rtm_dynamic':
-                start_epoch, step = resume(rank, load_path, score, eps, optimizer, None, sigmas, total_n_shots_count, sigmas_running)
-            else:
-                start_epoch, step = resume(rank, load_path, score, eps, optimizer)
-        
-        if rank == 0:
-            logging.info("\n\nFINISHED LOADING FROM CHECKPOINT!\n\n")
-            toc = time.time()
-            logging.info("TIME ELAPSED: " + str(timedelta(seconds=(toc-tic)//1)))
-    
     #set up logging (rank 0 only)
     if rank == 0:
         # setup logger
@@ -179,6 +154,33 @@ def train(rank, world_size, args, config):
         tb_logger = tb.SummaryWriter(log_dir=args.tb_path)
         logging.info("\nSTARTING TRAINING!\n\n")
         train_start = time.time()
+    
+    #check if we need to resume
+    if args.resume_training:
+        if rank == 0:
+            logging.info("\n\nRESUMING TRAINING - LOADING SAVED WEIGHTS\n\n")
+            tic = time.time()
+
+        load_path = os.path.join(args.log_path, 'checkpoint.pth')
+        eps = config.optim.eps
+
+        if config.model.ema:
+            if config.model.sigma_dist == 'rtm_dynamic':
+                start_epoch, step = resume(rank, load_path, score, eps, optimizer, ema_helper, sigmas, total_n_shots_count, sigmas_running)
+            else:
+                start_epoch, step = resume(rank, load_path, score, eps, optimizer, ema_helper)
+        else:
+            if config.model.sigma_dist == 'rtm_dynamic':
+                start_epoch, step = resume(rank, load_path, score, eps, optimizer, None, sigmas, total_n_shots_count, sigmas_running)
+            else:
+                start_epoch, step = resume(rank, load_path, score, eps, optimizer)
+
+        start_epoch += 1 #account for when checkpointing occurs!
+        
+        if rank == 0:
+            logging.info("\n\nFINISHED LOADING FROM CHECKPOINT!\n\n")
+            toc = time.time()
+            logging.info("TIME ELAPSED: " + str(timedelta(seconds=(toc-tic)//1)))
 
     #main training loop
     for epoch in range(start_epoch, config.training.n_epochs):
