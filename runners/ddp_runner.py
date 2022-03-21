@@ -210,18 +210,25 @@ def train(rank, world_size, args, config):
                 X = X.to(rank)
                 batch = (X, y)
             
-            if config.model.sigma_dist == 'rtm':
-                train_loss = rtm_loss(score, batch, n_shots, sigmas, \
-                                dynamic_sigmas=False, anneal_power=config.training.anneal_power, val=False)
-            elif config.model.sigma_dist == 'rtm_dynamic':
-                train_loss, sum_rmses_list, n_shots_count = rtm_loss(score, batch, n_shots, sigmas, \
-                                                                dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=False)
-                total_n_shots_count_epoch += n_shots_count
-                sigmas_running_epoch += sum_rmses_list
-            else:
-                train_loss = anneal_dsm_score_estimation(score, batch, sigmas, anneal_power=config.training.anneal_power)
-            
-            optimizer.zero_grad(set_to_none=True)
+            bad_grad = True
+            while(bad_grad):
+                optimizer.zero_grad(set_to_none=True)
+                
+                if config.model.sigma_dist == 'rtm':
+                    train_loss = rtm_loss(score, batch, n_shots, sigmas, \
+                                    dynamic_sigmas=False, anneal_power=config.training.anneal_power, val=False)
+                elif config.model.sigma_dist == 'rtm_dynamic':
+                    train_loss, sum_rmses_list, n_shots_count = rtm_loss(score, batch, n_shots, sigmas, \
+                                                                    dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=False)
+                    total_n_shots_count_epoch += n_shots_count
+                    sigmas_running_epoch += sum_rmses_list
+                else:
+                    train_loss = anneal_dsm_score_estimation(score, batch, sigmas, anneal_power=config.training.anneal_power)
+
+                if torch.isfinite(train_loss) and (not torch.isnan(train_loss)):
+                    bad_grad = False
+
+            #optimizer.zero_grad(set_to_none=True) # moving before loss calc for loss scrubbing
             train_loss.backward()
             optimizer.step()
 
