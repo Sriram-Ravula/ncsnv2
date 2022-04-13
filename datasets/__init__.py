@@ -11,21 +11,22 @@ from torch.utils.data import Subset
 import numpy as np
 
 def get_dataset(args, config):
-    if config.data.random_flip is False:
-        tran_transform = test_transform = transforms.Compose([
-            transforms.Resize(config.data.image_size),
-            transforms.ToTensor()
-        ])
-    else:
-        tran_transform = transforms.Compose([
-            transforms.Resize(config.data.image_size),
-            transforms.RandomHorizontalFlip(p=0.5),
-            transforms.ToTensor()
-        ])
-        test_transform = transforms.Compose([
-            transforms.Resize(config.data.image_size),
-            transforms.ToTensor()
-        ])
+    
+    # if config.data.random_flip is False:
+    #     tran_transform = test_transform = transforms.Compose([
+    #         transforms.Resize(config.data.image_size),
+    #         transforms.ToTensor()
+    #     ])
+    # else:
+    #     tran_transform = transforms.Compose([
+    #         transforms.Resize(config.data.image_size),
+    #         transforms.RandomHorizontalFlip(p=0.5),
+    #         transforms.ToTensor()
+    #     ])
+    #     test_transform = transforms.Compose([
+    #         transforms.Resize(config.data.image_size),
+    #         transforms.ToTensor()
+    #     ])
 
     if config.data.dataset == 'CIFAR10':
         dataset = CIFAR10(os.path.join(args.exp, 'datasets', 'cifar10'), train=True, download=True,
@@ -143,13 +144,20 @@ def get_dataset(args, config):
         dataset = Subset(dataset, train_indices)
 
     elif config.data.dataset == 'VELOCITY_RTM':
+        #NOTE adding rectangle support
+        if isinstance(config.data.image_size, list):
+            H, W = config.data.image_size
+        else:
+            H = config.data.image_size
+            W = config.data.image_size
+
         tran_transform = transforms.Compose([
-            transforms.Resize(size = [config.data.image_size, config.data.image_size], \
+            transforms.Resize(size = [H, W], \
                 interpolation=transforms.InterpolationMode.BICUBIC),
             transforms.RandomHorizontalFlip(p=0.5)
         ])
 
-        dataset = Velocity(path="/scratch/04703/sravula/experiments/datasets/rtm_n/243_images.pt", transform=tran_transform)
+        dataset = Velocity(path="/scratch/04703/sravula/experiments/datasets/seam_scaled/243_images.pt", transform=tran_transform)
 
         num_items = len(dataset)
         indices = list(range(num_items))
@@ -163,8 +171,15 @@ def get_dataset(args, config):
         dataset = Subset(dataset, train_indices)
     
     elif config.data.dataset == 'RTM_N':
+        #NOTE adding rectangle support
+        if isinstance(config.data.image_size, list):
+            H, W = config.data.image_size
+        else:
+            H = config.data.image_size
+            W = config.data.image_size
+
         tran_transform = transforms.Compose([
-            transforms.Resize(size = [config.data.image_size, config.data.image_size], \
+            transforms.Resize(size = [H, W], \
                 interpolation=transforms.InterpolationMode.BICUBIC),    #no horizontal flip - would affect RTM_n image!
         ])
 
@@ -174,9 +189,10 @@ def get_dataset(args, config):
         if n_shots.numel() == 1:
             n_shots = torch.unsqueeze(n_shots, 0)
 
+        #NOTE adding rescaling parameter
         dataset = RTM_N(path="/scratch/08269/rstone/full_rtm_8048", transform=tran_transform, \
-                        load_path="/scratch/04703/sravula/experiments/datasets/rtm_n", manual_hflip=config.data.random_flip,\
-                        n_shots=n_shots)
+                        load_path="/scratch/04703/sravula/experiments/datasets/seam_unscaled", manual_hflip=config.data.random_flip,\
+                        n_shots=n_shots, rescale=False)
 
         num_items = len(dataset)
         indices = list(range(num_items))
@@ -190,8 +206,15 @@ def get_dataset(args, config):
         dataset = Subset(dataset, train_indices)
     
     elif config.data.dataset == 'IBALT_RTM_N':
+        #NOTE adding rectangle support
+        if isinstance(config.data.image_size, list):
+            H, W = config.data.image_size
+        else:
+            H = config.data.image_size
+            W = config.data.image_size
+
         tran_transform = transforms.Compose([
-            transforms.Resize(size = [config.data.image_size, config.data.image_size], \
+            transforms.Resize(size = [H, W], \
                 interpolation=transforms.InterpolationMode.BICUBIC),    #no horizontal flip - would affect RTM_n image!
         ])
 

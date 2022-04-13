@@ -212,7 +212,8 @@ def train(rank, world_size, args, config):
             
             bad_grad = True
             while(bad_grad):
-                optimizer.zero_grad(set_to_none=True)
+                #NOTE not sure this does anything between repeat forwards of a batch if backward() is not called
+                optimizer.zero_grad(set_to_none=True)  
                 
                 if config.model.sigma_dist == 'rtm':
                     train_loss = rtm_loss(score, batch, n_shots, sigmas, \
@@ -227,6 +228,8 @@ def train(rank, world_size, args, config):
 
                 if torch.isfinite(train_loss) and (not torch.isnan(train_loss)):
                     bad_grad = False
+                else: #if it's a bad gradient, clear computational graph
+                    del train_loss
 
             #optimizer.zero_grad(set_to_none=True) # moving before loss calc for loss scrubbing
             train_loss.backward()
@@ -411,12 +414,18 @@ def train(rank, world_size, args, config):
 
             #prepare the initial samples for Langevin
             num_test_samples = config.sampling.batch_size // world_size
-            init_samples = torch.rand(num_test_samples, config.data.channels, config.data.image_size, 
-                                            config.data.image_size, device=rank)
+
+            #NOTE adding rectangle support
+            if isinstance(config.data.image_size, list):
+                H, W = config.data.image_size
+            else:
+                H = config.data.image_size
+                W = config.data.image_size
+                
+            init_samples = torch.rand(num_test_samples, config.data.channels, H, W, device=rank)
 
             if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
-                true_samples = torch.zeros(num_test_samples, config.data.channels, config.data.image_size, 
-                                                config.data.image_size, device=rank)
+                true_samples = torch.zeros(num_test_samples, config.data.channels, H, W, device=rank)
                 slice_ids = torch.zeros(num_test_samples, device=rank)
                 shot_idxs = torch.zeros(num_test_samples, device=rank)
                 for i in range(num_test_samples):

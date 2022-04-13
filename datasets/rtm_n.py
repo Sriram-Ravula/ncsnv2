@@ -22,11 +22,12 @@ class RTM_N(TensorDataset):
         - 
         - preprocesses the images to stitch together "n-shots" when loaded at train time
     """
-    def __init__(self, path, transform=None, debug=True, load_path=None, manual_hflip=True, n_shots=None):
+    def __init__(self, path, transform=None, debug=True, load_path=None, manual_hflip=True, n_shots=None, rescale=True):
         self.debug = debug
         self.path = path
         self.transform = transform
         self.n_shots = n_shots
+        self.rescale = rescale
 
         self.manual_hflip = manual_hflip
 
@@ -149,7 +150,7 @@ class RTM_N(TensorDataset):
             exp = load_exp(rtm243_path) #dictionary with the current subslice contents
 
             #filter and pre-process the rtm243 image 
-            rtm243_img = filterImage(exp['image'], exp['vel'], 0.95, 0.03, N=1, rescale=True,laplace=True).T
+            rtm243_img = filterImage(exp['image'], exp['vel'], 0.95, 0.03, N=243, rescale=self.rescale,laplace=True).T
 
             output[i] = np.expand_dims(rtm243_img, axis=0) #expand to [1, H, W]
 
@@ -200,7 +201,7 @@ class RTM_N(TensorDataset):
             for i in range(n_shots):
                 out_img += laplaceFilter(load_npy(shot_paths[i])[20:-20, 20:-20])
 
-        out_img = filterImage(out_img, exp['vel'], 0.95, 0.03, N=n_shots, rescale=True, laplace=False).T #[H, W]
+        out_img = filterImage(out_img, exp['vel'], 0.95, 0.03, N=n_shots, rescale=self.rescale, laplace=False).T #[H, W]
 
         out_img = torch.from_numpy(out_img).unsqueeze(0).float() #[1, H, W]
         out_img = self.transform(out_img)
@@ -264,7 +265,7 @@ class RTM_N(TensorDataset):
             for spth in shot_paths:
                 image_k = image_k + laplaceFilter(load_npy(spth)[20:-20, 20:-20])
 
-            new_x = filterImage(image_k, exp['vel'], 0.95, 0.03, N=n, rescale=True, laplace=False).T
+            new_x = filterImage(image_k, exp['vel'], 0.95, 0.03, N=n, rescale=self.rescale, laplace=False).T
 
             if memmap:
                 output[i] = np.expand_dims(new_x, axis=0)
