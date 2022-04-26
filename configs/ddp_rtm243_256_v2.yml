@@ -1,0 +1,46 @@
+training:
+  batch_size: 4
+  n_epochs: 300  #max number of training epochs
+  checkpoint_freq: 10 #save weights every n epochs
+  test_freq: 1 #test every n epochs
+  sample_freq: 50 #sample every n epochs
+  anneal_power: 2 
+
+sampling:
+  batch_size: 36  #number of samples to produce for sampling
+  step_lr: 0.0000016  #epsilon - step size for sampling during Langevin Dynamics
+  n_steps_each: 3 #T - number of inner loop steps
+  final_only: true
+  denoise: true #whether to add \sigma^2 * s_theta(x_T, \sigma_T) to the final output
+  add_noise: true #whether to add stochastic noise during Langevin dynamics (false means MAP estimation)
+
+data:
+  dataset: "VELOCITY_RTM"
+  image_size: 256
+  channels: 1
+  random_flip: true
+  num_workers: 8
+  logit_transform: false
+  uniform_dequantization: false
+  gaussian_dequantization: false
+  rescaled: false
+
+model:
+  sigma_begin: 348 
+  num_classes: 2311 
+  ema: true 
+  ema_rate: 0.999 
+  spec_norm: false
+  sigma_dist: geometric 
+  sigma_end: 0.01 
+  normalization: InstanceNorm++
+  nonlinearity: elu
+  ngf: 128
+
+optim:
+  weight_decay: 0.000
+  optimizer: "Adam"
+  lr: 0.0001
+  beta1: 0.9
+  amsgrad: false
+  eps: 0.00000001

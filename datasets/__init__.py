@@ -192,7 +192,7 @@ def get_dataset(args, config):
         #NOTE adding rescaling parameter
         dataset = RTM_N(path="/scratch/08269/rstone/full_rtm_8048", transform=tran_transform, \
                         load_path="/scratch/04703/sravula/experiments/datasets/seam_unscaled", manual_hflip=config.data.random_flip,\
-                        n_shots=n_shots, rescale=False)
+                        n_shots=n_shots, rescale=False, post_normalize=True)
 
         num_items = len(dataset)
         indices = list(range(num_items))

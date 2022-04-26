@@ -210,28 +210,31 @@ def train(rank, world_size, args, config):
                 X = X.to(rank)
                 batch = (X, y)
             
-            bad_grad = True
-            while(bad_grad):
-                #NOTE not sure this does anything between repeat forwards of a batch if backward() is not called
-                optimizer.zero_grad(set_to_none=True)  
-                
-                if config.model.sigma_dist == 'rtm':
-                    train_loss = rtm_loss(score, batch, n_shots, sigmas, \
-                                    dynamic_sigmas=False, anneal_power=config.training.anneal_power, val=False)
-                elif config.model.sigma_dist == 'rtm_dynamic':
-                    train_loss, sum_rmses_list, n_shots_count = rtm_loss(score, batch, n_shots, sigmas, \
-                                                                    dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=False)
-                    total_n_shots_count_epoch += n_shots_count
-                    sigmas_running_epoch += sum_rmses_list
-                else:
-                    train_loss = anneal_dsm_score_estimation(score, batch, sigmas, anneal_power=config.training.anneal_power)
+            if config.model.sigma_dist == 'rtm':
+                train_loss = rtm_loss(score, batch, n_shots, sigmas, \
+                                dynamic_sigmas=False, anneal_power=config.training.anneal_power, val=False)
+            elif config.model.sigma_dist == 'rtm_dynamic':
+                train_loss, sum_rmses_list, n_shots_count = rtm_loss(score, batch, n_shots, sigmas, \
+                                                                dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=False)
+                total_n_shots_count_epoch += n_shots_count
+                sigmas_running_epoch += sum_rmses_list
+            else:
+                train_loss = anneal_dsm_score_estimation(score, batch, sigmas, anneal_power=config.training.anneal_power)
 
-                if torch.isfinite(train_loss) and (not torch.isnan(train_loss)):
-                    bad_grad = False
-                else: #if it's a bad gradient, clear computational graph
-                    del train_loss
+            #checking if we have a valid loss or not
+            if torch.isfinite(train_loss) and (not torch.isnan(train_loss)):
+                valid_grad = torch.ones(1, device=rank)
+            else: 
+                valid_grad = torch.zeros(1, device=rank)
+            dist.all_reduce(valid_grad, op=dist.ReduceOp.SUM)
 
-            #optimizer.zero_grad(set_to_none=True) # moving before loss calc for loss scrubbing
+            if valid_grad < world_size:
+                del train_loss
+                if rank == 0:
+                    logging.info("step: {}, Bad loss - skipping batch".format(step))
+                continue
+
+            optimizer.zero_grad(set_to_none=True) # moving before loss calc for loss scrubbing
             train_loss.backward()
             optimizer.step()
 
@@ -243,8 +246,6 @@ def train(rank, world_size, args, config):
                     tb_logger.add_image('training_rtm_full', make_grid(X, 4), global_step=step)
                     if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
                         tb_logger.add_image('training_rtm_n', make_grid(X_perturbed, 4), global_step=step)
-                        # np.savetxt(os.path.join(args.log_path, 'train_slice_ids_{}.txt'.format(step)), y)
-                        # np.savetxt(os.path.join(args.log_path, 'train_nshots_idx_{}.txt'.format(step)), idx)
         
             if config.model.ema:
                 ema_helper.update(score)

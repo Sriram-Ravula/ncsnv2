@@ -22,12 +22,13 @@ class RTM_N(TensorDataset):
         - 
         - preprocesses the images to stitch together "n-shots" when loaded at train time
     """
-    def __init__(self, path, transform=None, debug=True, load_path=None, manual_hflip=True, n_shots=None, rescale=True):
+    def __init__(self, path, transform=None, debug=True, load_path=None, manual_hflip=True, n_shots=None, rescale=True, post_normalize=False):
         self.debug = debug
         self.path = path
         self.transform = transform
         self.n_shots = n_shots
         self.rescale = rescale
+        self.post_normalize = post_normalize
 
         self.manual_hflip = manual_hflip
 
@@ -64,14 +65,28 @@ class RTM_N(TensorDataset):
             #same order as self.slices - use this fact to index and match n_shots
             self.tensors = self.__build_dataset__()
 
+            #for normalization
+            self.mini = torch.min(self.tensors)
+            self.maxi = torch.max(self.tensors)
+
         else:
             self.tensors, self.slices = self.load(load_path)
             self.H, self.W = self.tensors.shape[-2:]
+
+            #for normalization
+            self.mini = torch.min(self.tensors)
+            self.maxi = torch.max(self.tensors)
         
         if self.debug:
             toc = time.time()
             print("TIME ELAPSED: ", str(toc - tic))
             print("Finished building dataset!")
+    
+    def normalize(self, x):
+        return (x - self.mini) / (self.maxi - self.mini)
+    
+    def unnormalize(self, x):
+        return (x * (self.maxi - self.mini)) + self.mini
 
     def __len__(self):
         return self.tensors.size(0)
@@ -79,6 +94,8 @@ class RTM_N(TensorDataset):
     def __getitem__(self, index):
         rtm243_sample = self.tensors[index]
 
+        if self.post_normalize:
+            rtm243_sample = self.normalize(rtm243_sample)
         if self.transform is not None:
             rtm243_sample = self.transform(rtm243_sample)
 
@@ -104,6 +121,8 @@ class RTM_N(TensorDataset):
 
         rtm243_sample = self.tensors[index]
 
+        if self.post_normalize:
+            rtm243_sample = self.normalize(rtm243_sample)
         if self.transform is not None:
             rtm243_sample = self.transform(rtm243_sample)
 
@@ -204,6 +223,8 @@ class RTM_N(TensorDataset):
         out_img = filterImage(out_img, exp['vel'], 0.95, 0.03, N=n_shots, rescale=self.rescale, laplace=False).T #[H, W]
 
         out_img = torch.from_numpy(out_img).unsqueeze(0).float() #[1, H, W]
+        if self.post_normalize:
+            out_img = self.normalize(out_img)
         out_img = self.transform(out_img)
 
         if do_parallel:
@@ -279,6 +300,8 @@ class RTM_N(TensorDataset):
                 for i, n in enumerate(n_shots.squeeze().tolist()))
         
         rtm_n_img = torch.from_numpy(rtm_n_img)
+        if self.post_normalize:
+            rtm_n_img = self.normalize(rtm_n_img)
         rtm_n_img = self.transform(rtm_n_img)
         # for i in range(rtm_n_img.shape[0]):
         #     if flipped[i]:
