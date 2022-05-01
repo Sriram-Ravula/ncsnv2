@@ -17,7 +17,7 @@ import torch.utils.tensorboard as tb
 
 from models import anneal_Langevin_dynamics
 from models import get_sigmas
-from models.ncsnv2 import NCSNv2Deepest
+from models.ncsnv2 import NCSNv2Deepest, NCSNv2Deepest2
 from models.ema import DDPEMAHelper
 
 from datasets import get_dataset
@@ -105,7 +105,8 @@ def train(rank, world_size, args, config):
     #set up the score-based model and parallelize
     torch.cuda.set_device(rank)
     torch.cuda.empty_cache()
-    score = NCSNv2Deepest(config).to(rank)
+    #score = NCSNv2Deepest(config).to(rank)
+    score = NCSNv2Deepest2(config).to(rank)
     score = torch.nn.SyncBatchNorm.convert_sync_batchnorm(score)
     score = DDP(score, device_ids=[rank], output_device=rank, find_unused_parameters=False)
 

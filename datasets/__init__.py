@@ -151,11 +151,15 @@ def get_dataset(args, config):
             H = config.data.image_size
             W = config.data.image_size
 
-        tran_transform = transforms.Compose([
-            transforms.Resize(size = [H, W], \
-                interpolation=transforms.InterpolationMode.BICUBIC),
-            transforms.RandomHorizontalFlip(p=0.5)
-        ])
+        if config.data.image_size == [752, 626]:
+            tran_transform = transforms.Compose([
+                transforms.Pad(padding=[0, 1, 1, 0], padding_mode='edge')
+            ])
+        else:
+            tran_transform = transforms.Compose([
+                transforms.Resize(size = [H, W], \
+                    interpolation=transforms.InterpolationMode.BICUBIC),    #no horizontal flip - would affect RTM_n image!
+            ])
 
         dataset = Velocity(path="/scratch/04703/sravula/experiments/datasets/seam_scaled/243_images.pt", transform=tran_transform)
 
@@ -178,10 +182,15 @@ def get_dataset(args, config):
             H = config.data.image_size
             W = config.data.image_size
 
-        tran_transform = transforms.Compose([
-            transforms.Resize(size = [H, W], \
-                interpolation=transforms.InterpolationMode.BICUBIC),    #no horizontal flip - would affect RTM_n image!
-        ])
+        if config.data.image_size == [752, 626]:
+            tran_transform = transforms.Compose([
+                transforms.Pad(padding=[0, 1, 1, 0], padding_mode='edge')
+            ])
+        else:
+            tran_transform = transforms.Compose([
+                transforms.Resize(size = [H, W], \
+                    interpolation=transforms.InterpolationMode.BICUBIC),    #no horizontal flip - would affect RTM_n image!
+            ])
 
         n_shots = np.asarray(config.model.n_shots).squeeze()
         n_shots = torch.from_numpy(n_shots)
