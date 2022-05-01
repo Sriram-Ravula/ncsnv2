@@ -17,7 +17,7 @@ sampling:
 
 data:
   dataset: "RTM_N"
-  image_size: [752, 626]
+  image_size: [752, 640]
   channels: 1
   random_flip: true
   num_workers: 8
