@@ -221,17 +221,39 @@ def train(rank, world_size, args, config):
             else:
                 train_loss = anneal_dsm_score_estimation(score, batch, sigmas, anneal_power=config.training.anneal_power)
 
+            # #checking if we have a valid loss or not
+            # if torch.isfinite(train_loss) and (not torch.isnan(train_loss)):
+            #     valid_grad = torch.ones(1, device=rank)
+            # else: 
+            #     valid_grad = torch.zeros(1, device=rank)
+            # dist.all_reduce(valid_grad, op=dist.ReduceOp.SUM)
+
+            # if valid_grad < world_size:
+            #     del train_loss
+            #     if rank == 0:
+            #         logging.info("step: {}, Bad loss - skipping batch".format(step))
+            #     continue
+
             #checking if we have a valid loss or not
             if torch.isfinite(train_loss) and (not torch.isnan(train_loss)):
-                valid_grad = torch.ones(1, device=rank)
-            else: 
-                valid_grad = torch.zeros(1, device=rank)
+                valid_grad = torch.tensor(0, device=rank)
+            else:
+                valid_grad = torch.tensor(2, device=rank) ** rank
             dist.all_reduce(valid_grad, op=dist.ReduceOp.SUM)
 
-            if valid_grad < world_size:
+            if valid_grad > 0:
                 del train_loss
+
+                bad_ranks = []
+                while(True):
+                    bad = int(torch.log2(valid_grad))
+                    valid_grad = valid_grad - 2**bad
+                    bad_ranks.append(bad)
+                    if valid_grad == 0:
+                        break
+
                 if rank == 0:
-                    logging.info("step: {}, Bad loss - skipping batch".format(step))
+                    logging.info("step: {}, Bad loss ranks {}".format(step, bad_ranks))
                 continue
 
             optimizer.zero_grad(set_to_none=True) # moving before loss calc for loss scrubbing
