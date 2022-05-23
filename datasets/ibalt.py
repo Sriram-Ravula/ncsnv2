@@ -29,9 +29,11 @@ class Ibalt(TensorDataset):
             self.slices = {}
             self.H = 0
             self.W = 0
+            df = pd.read_csv("/scratch/projects/sparkcognition/data/migration/ibalt/slices/ibaltcnvxhull_ns_so__nh401_nz1201_dh25_dz10/tbl_slices_outside_ibaltcntr_305from406.csv")
+            slc_list = list(df.sid)
 
             #grb all the valid sids and set image dimensions
-            for slc_dir in os.listdir(self.path):
+            for slc_dir in slc_list:
                 temp = {} #this will hold the number of shots available to each slice
                 files = os.listdir(os.path.join(self.path, slc_dir))
                 kshots = [f for f in files if 'nshts' in f]
