@@ -25,7 +25,7 @@ def get_sigmas(config):
             np.linspace(config.model.sigma_begin, config.model.sigma_end, config.model.num_classes)
         ).float()
     
-    elif config.model.sigma_dist == 'rtm' or config.model.sigma_dist == 'rtm_dynamic':
+    elif config.model.sigma_dist in ['rtm', 'rtm_dynamic', 'supervised']:
         lambda_temp = np.asarray(config.model.lambdas_list).squeeze()
         sigmas = torch.from_numpy(lambda_temp).float()
 

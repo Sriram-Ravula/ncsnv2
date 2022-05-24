@@ -17,13 +17,13 @@ import torch.utils.tensorboard as tb
 
 from models import anneal_Langevin_dynamics
 from models import get_sigmas
-from models.ncsnv2 import NCSNv2Deepest, NCSNv2Deepest2
+from models.ncsnv2 import NCSNv2Deepest, NCSNv2Deepest2, NCSNv2Deepest2_supervised
 from models.ema import DDPEMAHelper
 
 from datasets import get_dataset
 
 from losses import get_optimizer
-from losses.dsm import anneal_dsm_score_estimation, rtm_loss
+from losses.dsm import anneal_dsm_score_estimation, rtm_loss, supervised_loss
     
 def setup(args):
     dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
@@ -107,7 +107,10 @@ def train(args, config):
     torch.cuda.set_device(config.device)
     torch.cuda.empty_cache()
     #score = NCSNv2Deepest(config).to(rank)
-    score = NCSNv2Deepest2(config).to(config.device)
+    if config.model.sigma_dist == 'supervised':
+        score = NCSNv2Deepest2_supervised(config).to(config.device)
+    else:
+        score = NCSNv2Deepest2(config).to(config.device)
     score = torch.nn.SyncBatchNorm.convert_sync_batchnorm(score)
     score = DDP(score, device_ids=[config.device], output_device=config.device, find_unused_parameters=False)
 
@@ -220,6 +223,8 @@ def train(args, config):
                                                                 dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=False)
                 total_n_shots_count_epoch += n_shots_count
                 sigmas_running_epoch += sum_rmses_list
+            elif config.model.sigma_dist == 'supervised':
+                train_loss = supervised_loss(score, batch, anneal_power=config.training.anneal_power)
             else:
                 train_loss = anneal_dsm_score_estimation(score, batch, sigmas, anneal_power=config.training.anneal_power)
 
@@ -390,6 +395,8 @@ def train(args, config):
                     elif config.model.sigma_dist == 'rtm_dynamic':
                         test_loss, _, _ = rtm_loss(test_score, batch, n_shots, sigmas, \
                                                     dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=True)
+                    elif config.model.sigma_dist == 'supervised':
+                        test_loss = supervised_loss(test_score, batch, anneal_power=config.training.anneal_power)
                     else:
                         test_loss = anneal_dsm_score_estimation(test_score, batch, sigmas, anneal_power=config.training.anneal_power)
                 

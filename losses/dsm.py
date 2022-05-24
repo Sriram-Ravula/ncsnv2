@@ -19,6 +19,34 @@ def anneal_dsm_score_estimation(scorenet, batch, sigmas, labels=None, anneal_pow
 
     return loss.mean(dim=0) #loss.sum() #
 
+def supervised_loss(scorenet, batch, anneal_power=2):
+    """
+    Calculates a supervised l2 loss and sums over losses for values of k, each scaled by empirical mse
+    """
+    X_243, slice_id, X_N, shot_idx = batch
+
+    #(1) find the empirical RMSE for each sample
+    #sigma_n has size [N]
+    with torch.no_grad():
+        #this gives us sqrt((1 / H*W*C) ||x_243 - x_N||_2^2), i.e. the RMSE per sample
+        sigma_n = torch.sqrt(torch.mean((X_243 - X_N) ** 2, dim=[1, 2, 3])) 
+
+        sigma_n = sigma_n.view(X_243.shape[0], *([1] * len(X_243.shape[1:])))
+
+    #(2) Get score network output
+    labels = torch.tensor(shot_idx, device=X_243.device).long()
+    scores = scorenet(X_N, labels)
+    scores = scores.view(scores.shape[0], -1)
+
+    #(3) make and shape the target
+    target = X_243.view(X_243.shape[0], -1)
+
+    #(4) grab the loss
+    loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * sigma_n.squeeze() ** anneal_power
+
+    return loss.mean(dim=0)
+
+
 def rtm_loss(scorenet, batch, n_shots, sigmas, dynamic_sigmas=False, anneal_power=2., val=False):
     """
     Expects batch to consist of (RTM243, slice_id, RTM_N, N)
