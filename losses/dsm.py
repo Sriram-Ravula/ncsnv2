@@ -19,6 +19,53 @@ def anneal_dsm_score_estimation(scorenet, batch, sigmas, labels=None, anneal_pow
 
     return loss.mean(dim=0) #loss.sum() #
 
+def supervised_conditional(scorenet, samples, n_shots, lambdas_list, rtm_dataset, dynamic_lambdas=False, labels=None, hook=None, val=False):
+    """
+    Expects batch to consist of (RTM243, slice_id, RTM_N, N)
+    """
+    X_243, slice_id, X_N, shot_idx = batch
+    
+    #(2) grab the correct sigma(shot_idx) val
+    #sigma_n has size [N]
+    with torch.no_grad():
+        if dynamic_sigmas:
+            #this gives us sqrt((1 / H*W*C) ||x_243 - x_N||_2^2), i.e. the RMSE per sample
+            sigma_n = torch.sqrt(torch.mean((X_243 - X_N) ** 2, dim=[1, 2, 3])) 
+
+            sum_mses_list = torch.zeros(n_shots.numel(), device=X_243.device)
+            n_shots_count = torch.zeros(n_shots.numel(), device=X_243.device)
+
+            for i, idx in enumerate(shot_idx):
+                sum_mses_list[idx] += sigma_n[i].item()
+                n_shots_count[idx] += 1
+
+            sigma_n = sigma_n.view(X_243.shape[0], *([1] * len(X_243.shape[1:])))                 
+        else:
+            sigma_n = sigmas[shot_idx].view(X_243.shape[0], *([1] * len(X_243.shape[1:])))
+    
+    #(3) Scale the target
+    target = X_243.view(X_243.shape[0], -1)
+
+    #(4) grab the network output s_theta(x~, sigma_i) / sigma(n_shots_i)
+    #labels has size [N] (batch size)
+    #scores = [N, C, H, W]
+    labels = torch.tensor(shot_idx, device=X_243.device).long()
+    if dynamic_sigmas and not val:
+        #if dynamic, pass the measured sigma values to the score network to scale it
+        scores = scorenet(X_N, labels, sigma_n)
+    else:
+        scores = scorenet(X_N, labels, None) 
+    scores = scores.view(scores.shape[0], -1)
+    
+    #(5) calculate the loss
+    loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1) * sigma_n.squeeze() ** anneal_power
+
+    if dynamic_sigmas:
+        return loss.mean(dim=0), sum_mses_list, n_shots_count 
+        #return loss.sum(), sum_mses_list, n_shots_count
+    else:
+        loss.mean(dim=0) #return loss.sum() #
+
 def supervised_loss(scorenet, batch, anneal_power=2):
     """
     Calculates a supervised l2 loss and sums over losses for values of k, each scaled by empirical mse
