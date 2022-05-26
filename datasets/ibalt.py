@@ -9,17 +9,19 @@ import torch.nn.functional as F
 from torchvision.transforms.functional import hflip as do_hflip
 import random
 import pickle
+import pandas as pd
 
 from rtm_utils import load_exp, load_npy, filterImage, laplaceFilter
 from joblib import Parallel, delayed
 
 class Ibalt(TensorDataset):
-    def __init__(self, path, transform=None, debug=True, load_path=None, manual_hflip=True, n_shots=None):
+    def __init__(self, path, transform=None, debug=True, load_path=None, manual_hflip=True, n_shots=None, rescaled=True):
         self.path = path
         self.transform = transform
         self.debug = debug
         self.manual_hflip = manual_hflip
         self.n_shots = n_shots
+        self.rescaled = rescaled
 
         if self.debug:
             print("Starting to build dataset........")
@@ -32,8 +34,10 @@ class Ibalt(TensorDataset):
             df = pd.read_csv("/scratch/projects/sparkcognition/data/migration/ibalt/slices/ibaltcnvxhull_ns_so__nh401_nz1201_dh25_dz10/tbl_slices_outside_ibaltcntr_305from406.csv")
             slc_list = list(df.sid)
 
+            slc_dirs = [f for f in slc_list if f not in ['so_2083', 'so_3647', 'so_587', 'so_317'] ] #slices that have caused issues
+
             #grb all the valid sids and set image dimensions
-            for slc_dir in slc_list:
+            for slc_dir in slc_dirs:
                 temp = {} #this will hold the number of shots available to each slice
                 files = os.listdir(os.path.join(self.path, slc_dir))
                 kshots = [f for f in files if 'nshts' in f]
@@ -44,8 +48,8 @@ class Ibalt(TensorDataset):
                     
                     self.slices[slc_dir] = temp
 
-                    if self.H == 0:
-                       self.W, self.H = np.load(os.path.join(self.path, slc_dir, 'vel.npy'),allow_pickle=True).shape
+                if self.H == 0:
+                    self.W, self.H = np.load(os.path.join(self.path, slc_dir, 'vel.npy'),allow_pickle=True).shape
 
             #[N, 1, H, W] set of filtered and pre-processed full-shot RTM images in [0, 1]
             #same order as self.slices - use this fact to index and match n_shots
@@ -83,7 +87,13 @@ class Ibalt(TensorDataset):
         #get the corresponding index for the randomly-selected k from the given n_shots list
         k_num = int(k_str.strip('nshts')) #k
         k_idx = self.n_shots == k_num #tensor of shape self.n_shots.shape with True at matching indices
-        k_idx = k_idx.nonzero().item() #finds the index of n_shots matching the chosen value of k
+        try:
+            k_idx = k_idx.nonzero().item() #finds the index of n_shots matching the chosen value of k
+        except:
+            print(slice_id)
+            print(k_idx)
+            k_idx = k_idx.nonzero().item()
+
 
         #get the k-shot image for the given slice
         rtm_k = self.__grab_k_shot_img__(sid=slice_id, n_shots=k_str) #has a filtered [1, H, W] image
@@ -142,6 +152,11 @@ class Ibalt(TensorDataset):
         """
         out_tensors = np.zeros(shape=(len(self.slices), 1, self.H, self.W), dtype=np.float32)
 
+        ##### DEBUGGING #####
+        min_vals = []
+        max_vals = []
+        ##### DEBUGGING #####
+
         #go through all viable slices and filter the full-shot images to store
         for idx, sid in enumerate(sorted(self.slices)):
             slice_path = os.path.join(self.path, sid, 'slice.npy') 
@@ -150,8 +165,22 @@ class Ibalt(TensorDataset):
             img = np.load(slice_path,allow_pickle=True) #these will have shape [W, H]
             vel = np.load(vel_path,allow_pickle=True) / 1000 #convert from m/s to km/s
 
-            filtered_img = filterImage(img, vel, 0.95, 0.03, N=1, useMask=True, laplace=False, rescale=True)
+            filtered_img = filterImage(img, vel, 0.95, 0.03, N=1, useMask=True, laplace=False, rescale=self.rescaled)
+            
+            ##### DEBUGGING #####
+            min_vals.append(np.min(filtered_img))
+            max_vals.append(np.max(filtered_img))
+            ##### DEBUGGING #####
+            
             out_tensors[idx, 0] = filtered_img.T #transposed to have dims [H, W]
+
+        ##### DEBUGGING #####
+        mxval = np.mean(np.array(max_vals))
+        mnval = np.mean(np.array(min_vals))
+        print("Average min value of full-shot image: ", mnval)
+        print("Average max value of full-shot image: ", mxval)
+        ##### DEBUGGING #####
+
 
         return torch.from_numpy(out_tensors).float()
     
@@ -168,7 +197,7 @@ class Ibalt(TensorDataset):
         img = np.load(os.path.join(base_path, cand_name),allow_pickle=True) #[W, H] unfiltered
         vel = np.load(os.path.join(self.path, sid, 'vel.npy'),allow_pickle=True)/1000 #from m/s -> km/s
 
-        filtered_img = filterImage(img, vel, 0.95, 0.03, N=int(n_shots.strip('nshts')), useMask=True, laplace=False, rescale=True)
+        filtered_img = filterImage(img, vel, 0.95, 0.03, N=int(n_shots.strip('nshts')), useMask=True, laplace=False, rescale=self.rescaled)
 
         out_img = torch.from_numpy(filtered_img.T).float().unsqueeze(0) #[1, H, W]
         if self.transform is not None:
