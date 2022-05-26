@@ -248,17 +248,19 @@ def train(args, config):
             if valid_grad > 0:
                 del train_loss
 
-                bad_ranks = []
-                while(True):
-                    bad = int(torch.log2(valid_grad))
-                    valid_grad = valid_grad - 2**bad
-                    bad_ranks.append(bad)
-                    if valid_grad == 0:
-                        break
-
-                if args.rank == 0:
-                    logging.info("step: {}, Bad loss ranks {}".format(step, bad_ranks))
+                logging.info("step: {}, Bad loss".format(step))
                 continue
+                # bad_ranks = []
+                # while(True):
+                #     bad = int(torch.log2(valid_grad))
+                #     valid_grad = valid_grad - 2**bad
+                #     bad_ranks.append(bad)
+                #     if valid_grad == 0:
+                #         break
+
+                # if args.rank == 0:
+                #     logging.info("step: {}, Bad loss ranks {}".format(step, bad_ranks))
+                # continue
 
             optimizer.zero_grad(set_to_none=True) # moving before loss calc for loss scrubbing
             train_loss.backward()

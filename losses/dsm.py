@@ -19,7 +19,7 @@ def anneal_dsm_score_estimation(scorenet, batch, sigmas, labels=None, anneal_pow
 
     return loss.mean(dim=0) #loss.sum() #
 
-def supervised_conditional(scorenet, samples, n_shots, lambdas_list, rtm_dataset, dynamic_lambdas=False, labels=None, hook=None, val=False):
+def supervised_conditional(scorenet, batch, n_shots, sigmas, dynamic_sigmas=False, anneal_power=2., val=False):
     """
     Expects batch to consist of (RTM243, slice_id, RTM_N, N)
     """
