@@ -17,13 +17,13 @@ import torch.utils.tensorboard as tb
 
 from models import anneal_Langevin_dynamics
 from models import get_sigmas
-from models.ncsnv2 import NCSNv2Deepest, NCSNv2Deepest2, NCSNv2Deepest2_supervised
+from models.ncsnv2 import NCSNv2Deepest2_supervised_unconditional
 from models.ema import DDPEMAHelper
 
 from datasets import get_dataset
 
 from losses import get_optimizer
-from losses.dsm import anneal_dsm_score_estimation, rtm_loss, supervised_loss
+from losses.dsm import anneal_dsm_score_estimation, rtm_loss, supervised_loss, supervised_conditional
     
 def setup(args):
     dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
@@ -107,10 +107,7 @@ def train(args, config):
     torch.cuda.set_device(config.device)
     torch.cuda.empty_cache()
     #score = NCSNv2Deepest(config).to(rank)
-    if config.model.sigma_dist == 'supervised':
-        score = NCSNv2Deepest2_supervised(config).to(config.device)
-    else:
-        score = NCSNv2Deepest2(config).to(config.device)
+    score = NCSNv2Deepest2_supervised_unconditional(config).to(config.device)
     score = torch.nn.SyncBatchNorm.convert_sync_batchnorm(score)
     score = DDP(score, device_ids=[config.device], output_device=config.device, find_unused_parameters=False)
 
@@ -219,7 +216,7 @@ def train(args, config):
                 train_loss = rtm_loss(score, batch, n_shots, sigmas, \
                                 dynamic_sigmas=False, anneal_power=config.training.anneal_power, val=False)
             elif config.model.sigma_dist == 'rtm_dynamic':
-                train_loss, sum_rmses_list, n_shots_count = rtm_loss(score, batch, n_shots, sigmas, \
+                train_loss, sum_rmses_list, n_shots_count = supervised_conditional(score, batch, n_shots, sigmas, \
                                                                 dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=False)
                 total_n_shots_count_epoch += n_shots_count
                 sigmas_running_epoch += sum_rmses_list
@@ -251,17 +248,19 @@ def train(args, config):
             if valid_grad > 0:
                 del train_loss
 
-                bad_ranks = []
-                while(True):
-                    bad = int(torch.log2(valid_grad))
-                    valid_grad = valid_grad - 2**bad
-                    bad_ranks.append(bad)
-                    if valid_grad == 0:
-                        break
-
-                if args.rank == 0:
-                    logging.info("step: {}, Bad loss ranks {}".format(step, bad_ranks))
+                logging.info("step: {}, Bad loss".format(step))
                 continue
+                # bad_ranks = []
+                # while(True):
+                #     bad = int(torch.log2(valid_grad))
+                #     valid_grad = valid_grad - 2**bad
+                #     bad_ranks.append(bad)
+                #     if valid_grad == 0:
+                #         break
+
+                # if args.rank == 0:
+                #     logging.info("step: {}, Bad loss ranks {}".format(step, bad_ranks))
+                # continue
 
             optimizer.zero_grad(set_to_none=True) # moving before loss calc for loss scrubbing
             train_loss.backward()
@@ -393,7 +392,7 @@ def train(args, config):
                         test_loss = rtm_loss(test_score, batch, n_shots, sigmas, \
                                         dynamic_sigmas=False, anneal_power=config.training.anneal_power, val=True)
                     elif config.model.sigma_dist == 'rtm_dynamic':
-                        test_loss, _, _ = rtm_loss(test_score, batch, n_shots, sigmas, \
+                        test_loss, _, _ = supervised_conditional(test_score, batch, n_shots, sigmas, \
                                                     dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=True)
                     elif config.model.sigma_dist == 'supervised':
                         test_loss = supervised_loss(test_score, batch, anneal_power=config.training.anneal_power)
