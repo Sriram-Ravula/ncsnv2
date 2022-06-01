@@ -91,9 +91,7 @@ class Ibalt(TensorDataset):
         try:
             k_idx = k_idx.nonzero().item() #finds the index of n_shots matching the chosen value of k
         except:
-            print(slice_id)
-            print(k_idx)
-            k_idx = k_idx.nonzero().item()
+            k_idx = k_idx.view(-1).nonzero().item()
 
 
         #get the k-shot image for the given slice
