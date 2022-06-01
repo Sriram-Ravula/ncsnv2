@@ -11,6 +11,7 @@
 #SBATCH --mail-type=all
 
 module load cuda
+module load conda
 conda activate seismic
 cd $HOME/ncsnv2
 

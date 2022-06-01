@@ -1,6 +1,6 @@
 training:
   batch_size: 1
-  n_epochs: 300  #max number of training epochs
+  n_epochs: 1000  #max number of training epochs
   checkpoint_freq: 25 #save weights every n epochs
   test_freq: 25 #test every n epochs
   sample_freq: 25 #sample every n epochs
