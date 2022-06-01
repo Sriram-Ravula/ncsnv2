@@ -90,6 +90,7 @@ class Ibalt(TensorDataset):
         try:
             k_idx = k_idx.nonzero().item() #finds the index of n_shots matching the chosen value of k
         except:
+            print(k_idx)
             k_idx = k_idx.view(-1).nonzero().item()
 
 
@@ -122,7 +123,11 @@ class Ibalt(TensorDataset):
             #get the corresponding index for the randomly-selected k from the given n_shots list
             k_num = int(k_str.strip('nshts')) #k
             k_idx = self.n_shots == k_num #tensor of shape self.n_shots.shape with True at matching indices
-            shot_idx = k_idx.nonzero().item() #finds the index of n_shots matching the chosen value of k
+
+            try:
+                shot_idx = k_idx.nonzero().item() #finds the index of n_shots matching the chosen value of k
+            except:
+                shot_idx = k_idx.view(-1).nonzero().item()
         else:
             slice_id = sorted(self.slices)[index] #so_xxxx
             k_str = 'nshts' + str(self.n_shots[shot_idx])
