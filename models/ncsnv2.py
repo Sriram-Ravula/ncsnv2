@@ -21,10 +21,10 @@ class NCSNv2(nn.Module):
         self.register_buffer('sigmas', get_sigmas(config))
         self.config = config
 
-        self.begin_conv = nn.Conv2d(config.data.channels, ngf, 3, stride=1, padding=1)
+        self.begin_conv = nn.Conv2d(config.data.in_channels, ngf, 3, stride=1, padding=1)
 
         self.normalizer = self.norm(ngf, self.num_classes)
-        self.end_conv = nn.Conv2d(ngf, config.data.channels, 3, stride=1, padding=1)
+        self.end_conv = nn.Conv2d(ngf, config.data.out_channels, 3, stride=1, padding=1)
 
         self.res1 = nn.ModuleList([
             ResidualBlock(self.ngf, self.ngf, resample=None, act=act,
@@ -113,10 +113,10 @@ class NCSNv2Deeper(nn.Module):
         self.register_buffer('sigmas', get_sigmas(config))
         self.config = config
 
-        self.begin_conv = nn.Conv2d(config.data.channels, ngf, 3, stride=1, padding=1)
+        self.begin_conv = nn.Conv2d(config.data.in_channels, ngf, 3, stride=1, padding=1)
         self.normalizer = self.norm(ngf, self.num_classes)
 
-        self.end_conv = nn.Conv2d(ngf, config.data.channels, 3, stride=1, padding=1)
+        self.end_conv = nn.Conv2d(ngf, config.data.out_channels, 3, stride=1, padding=1)
 
         self.res1 = nn.ModuleList([
             ResidualBlock(self.ngf, self.ngf, resample=None, act=act,
@@ -207,10 +207,10 @@ class NCSNv2Deepest(nn.Module):
         self.register_buffer('sigmas', get_sigmas(config))
         self.config = config
 
-        self.begin_conv = nn.Conv2d(config.data.channels, ngf, 3, stride=1, padding=1)
+        self.begin_conv = nn.Conv2d(config.data.in_channels, ngf, 3, stride=1, padding=1)
         self.normalizer = self.norm(ngf, self.num_classes)
 
-        self.end_conv = nn.Conv2d(ngf, config.data.channels, 3, stride=1, padding=1)
+        self.end_conv = nn.Conv2d(ngf, config.data.out_channels, 3, stride=1, padding=1)
 
         self.res1 = nn.ModuleList([
             ResidualBlock(self.ngf, self.ngf, resample=None, act=act,
@@ -331,10 +331,10 @@ class NCSNv2Deepest2(nn.Module):
         self.register_buffer('sigmas', get_sigmas(config))
         self.config = config
 
-        self.begin_conv = nn.Conv2d(config.data.channels, ngf, 3, stride=1, padding=1)
+        self.begin_conv = nn.Conv2d(config.data.in_channels, ngf, 3, stride=1, padding=1)
         self.normalizer = self.norm(ngf, self.num_classes)
 
-        self.end_conv = nn.Conv2d(ngf, config.data.channels, 3, stride=1, padding=1)
+        self.end_conv = nn.Conv2d(ngf, config.data.out_channels, 3, stride=1, padding=1)
 
         self.res1 = nn.ModuleList([
             ResidualBlock(self.ngf, self.ngf, resample=None, act=act,
@@ -463,10 +463,10 @@ class NCSNv2Deepest2_supervised(nn.Module):
         self.act = act = get_act(config)
         self.config = config
 
-        self.begin_conv = nn.Conv2d(config.data.channels, ngf, 3, stride=1, padding=1)
+        self.begin_conv = nn.Conv2d(config.data.in_channels, ngf, 3, stride=1, padding=1)
         self.normalizer = self.norm(ngf, self.num_classes)
 
-        self.end_conv = nn.Conv2d(ngf, config.data.channels, 3, stride=1, padding=1)
+        self.end_conv = nn.Conv2d(ngf, config.data.out_channels, 3, stride=1, padding=1)
 
         self.res1 = nn.ModuleList([
             ConditionalResidualBlock(self.ngf, self.ngf, self.num_classes, resample=None, act=act,
@@ -576,10 +576,10 @@ class NCSNv2Deepest2_supervised_unconditional(nn.Module):
         self.register_buffer('sigmas', get_sigmas(config))
         self.config = config
 
-        self.begin_conv = nn.Conv2d(config.data.channels, ngf, 3, stride=1, padding=1)
+        self.begin_conv = nn.Conv2d(config.data.in_channels, ngf, 3, stride=1, padding=1)
         self.normalizer = self.norm(ngf, self.num_classes)
 
-        self.end_conv = nn.Conv2d(ngf, config.data.channels, 3, stride=1, padding=1)
+        self.end_conv = nn.Conv2d(ngf, config.data.out_channels, 3, stride=1, padding=1)
 
         self.res1 = nn.ModuleList([
             ResidualBlock(self.ngf, self.ngf, resample=None, act=act,

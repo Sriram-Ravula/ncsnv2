@@ -196,7 +196,7 @@ def train(args, config):
         train_loader.sampler.set_epoch(epoch) #in DDP we must tell distributed samplers what epoch it is for randomization
 
         #prepare counters for epoch stats
-        epoch_train_loss = torch.zeros(1, device=config.device) 
+        epoch_train_loss = torch.zeros(1, device=config.device)
         num_samples = torch.zeros(1, device=config.device)
         if config.model.sigma_dist == 'rtm_dynamic':
             total_n_shots_count_epoch = torch.zeros(n_shots.numel(), device=config.device)
@@ -206,7 +206,7 @@ def train(args, config):
 
         for i, batch in enumerate(train_loader):
             if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
-                X, y, X_perturbed, idx = batch 
+                X, y, X_perturbed, idx = batch
                 X = X.to(config.device)
                 X_perturbed = X_perturbed.to(config.device)
                 batch = (X, y, X_perturbed, idx)
@@ -454,10 +454,10 @@ def train(args, config):
                 H = config.data.image_size
                 W = config.data.image_size
                 
-            init_samples = torch.rand(num_test_samples, config.data.channels, H, W, device=config.device)
+            init_samples = torch.rand(num_test_samples, config.data.in_channels, H, W, device=config.device)
 
             if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
-                true_samples = torch.zeros(num_test_samples, config.data.channels, H, W, device=config.device)
+                true_samples = torch.zeros(num_test_samples, config.data.in_channels, H, W, device=config.device)
                 slice_ids = torch.zeros(num_test_samples, device=config.device)
                 shot_idxs = torch.zeros(num_test_samples, device=config.device)
                 for i in range(num_test_samples):

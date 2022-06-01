@@ -22,6 +22,7 @@ class Ibalt(TensorDataset):
         self.manual_hflip = manual_hflip
         self.n_shots = n_shots
         self.rescaled = rescaled
+        self.vel_max = 5
 
         if self.debug:
             print("Starting to build dataset........")
@@ -200,6 +201,10 @@ class Ibalt(TensorDataset):
         filtered_img = filterImage(img, vel, 0.95, 0.03, N=int(n_shots.strip('nshts')), useMask=True, laplace=False, rescale=self.rescaled)
 
         out_img = torch.from_numpy(filtered_img.T).float().unsqueeze(0) #[1, H, W]
+        out_vel = torch.from_numpy(vel.T/self.vel_max).float().unsqueeze(0) #normalize to maximum of 5 km/s
+
+        out_img = torch.cat((out_img, out_vel), dim=0)
+
         if self.transform is not None:
             out_img = self.transform(out_img)
         

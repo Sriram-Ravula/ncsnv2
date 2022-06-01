@@ -2,8 +2,8 @@ import os
 import torch
 import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10, LSUN
-from datasets.celeba import CelebA
-from datasets.ffhq import FFHQ
+#from datasets.celeba import CelebA
+#from datasets.ffhq import FFHQ
 from datasets.velocity_fine import Velocity
 from datasets.rtm_n import RTM_N
 from datasets.ibalt import Ibalt

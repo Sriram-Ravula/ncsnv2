@@ -102,7 +102,7 @@ def rtm_loss(scorenet, batch, n_shots, sigmas, dynamic_sigmas=False, anneal_powe
     
     #(1) form the targets 
     #targets has siz [N, C, H, W]
-    target = X_243 - X_N #(x_243 - x_{n_shots_i})
+    target = X_243 - X_N[:,0,:,:] #(x_243 - x_{n_shots_i})
     
     #(2) grab the correct sigma(shot_idx) val
     #sigma_n has size [N]

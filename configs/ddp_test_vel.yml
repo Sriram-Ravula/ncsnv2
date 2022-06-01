@@ -1,6 +1,6 @@
 training:
   batch_size: 1
-  n_epochs: 10  #max number of training epochs
+  n_epochs: 300  #max number of training epochs
   checkpoint_freq: 25 #save weights every n epochs
   test_freq: 25 #test every n epochs
   sample_freq: 25 #sample every n epochs
@@ -19,7 +19,8 @@ sampling:
 data:
   dataset: "IBALT_RTM_N"
   image_size: [1024,256]
-  channels: 1
+  in_channels: 2
+  out_channels: 1
   random_flip: true
   num_workers: 8
   logit_transform: false
