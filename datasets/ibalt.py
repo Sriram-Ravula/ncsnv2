@@ -93,7 +93,6 @@ class Ibalt(TensorDataset):
         except:
             k_idx = k_idx.view(-1).nonzero().item()
 
-
         #get the k-shot image for the given slice
         rtm_k = self.__grab_k_shot_img__(sid=slice_id, n_shots=k_str) #has a filtered [1, H, W] image
 

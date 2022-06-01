@@ -4,8 +4,8 @@
 #SBATCH -o ncsn_ddp_large_new_model.o%j
 #SBATCH -e ncsn_ddp_large_new_model.e%j
 #SBATCH -p v100
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
+#SBATCH --nodes=2
+#SBATCH --ntasks=2
 #SBATCH -t 48:00:00
 #SBATCH --mail-user=dvoytan@sparkcognition.com
 #SBATCH --mail-type=all
