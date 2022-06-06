@@ -35,13 +35,18 @@ class Ibalt(TensorDataset):
             df = pd.read_csv("/scratch/projects/sparkcognition/data/migration/ibalt/slices/ibaltcnvxhull_ns_so__nh401_nz1201_dh25_dz10/tbl_slices_outside_ibaltcntr_305from406.csv")
             slc_list = list(df.sid)
 
-            slc_dirs = [f for f in slc_list if f not in ['so_2083', 'so_3647', 'so_587', 'so_317'] ] #slices that have caused issues
+            slc_dirs = [f for f in slc_list if f not in ['so_2083', 'so_3647', 'so_587', 'so_317', 'so_229'] ] #slices that have caused issues
 
             #grb all the valid sids and set image dimensions
             for slc_dir in slc_dirs:
                 temp = {} #this will hold the number of shots available to each slice
                 files = os.listdir(os.path.join(self.path, slc_dir))
                 kshots = [f for f in files if 'nshts' in f]
+
+                def str_stripper(txt):
+                    return ''.join(s for s in txt if s.isdigit())
+
+                kshots = [f for f in kshots if int(str_stripper(f)) in set(np.asarray(self.n_shots))]
 
                 if len(kshots) > 0:
                     for k in kshots:
@@ -91,6 +96,9 @@ class Ibalt(TensorDataset):
         try:
             k_idx = k_idx.nonzero().item() #finds the index of n_shots matching the chosen value of k
         except:
+            print('Failed at first occurence')
+            print(f'K index {k_idx}')
+            print(f'K str {k_str}')
             k_idx = k_idx.view(-1).nonzero().item()
 
         #get the k-shot image for the given slice
@@ -125,6 +133,10 @@ class Ibalt(TensorDataset):
             try:
                 shot_idx = k_idx.nonzero().item() #finds the index of n_shots matching the chosen value of k
             except:
+                print('Failed at second occurence')
+                print(f'Shot index {shot_idx}')
+                print(f'K index {k_idx}')
+                print(f'K str {k_str}')
                 shot_idx = k_idx.view(-1).nonzero().item()
         else:
             slice_id = sorted(self.slices)[index] #so_xxxx

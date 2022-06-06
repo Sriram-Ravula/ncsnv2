@@ -223,7 +223,7 @@ def get_dataset(args, config):
         if n_shots.numel() == 1:
             n_shots = torch.unsqueeze(n_shots, 0)
 
-        dataset = Ibalt(path='/scratch/08087/gandhiy/data/migration/ibalt/slices/ibaltcnvxhull_ns_so__nh401_nz1201_dh25_dz10', \
+        dataset = Ibalt(path='/scratch/projects/sparkcognition/data/migration/ibalt/slices/ibaltcnvxhull_ns_so__nh401_nz1201_dh25_dz10', \
                         transform=tran_transform, manual_hflip=config.data.random_flip, n_shots=n_shots)
 
         num_items = len(dataset)
