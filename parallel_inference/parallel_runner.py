@@ -37,7 +37,7 @@ def grab_data(args_score, config_score, args_par, config_par, n_shots, pin_memor
 
     dataset = IbaltParallel(args_par, config_par, n_shots)
 
-    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True, drop_last=False)
+    sampler = DistributedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=False, drop_last=False)
 
     dataloader = DataLoader(dataset, batch_size=1, pin_memory=pin_memory, \
                         num_workers=1, drop_last=False, sampler=sampler, persistent_workers=True)
@@ -123,9 +123,9 @@ def run_vol(args_score, config_score, args_par, config_par):
     #grab the dataset
     dataloader = grab_data(args_score, config_score, args_par, config_par, n_shots)
 
-    ####################
-    #     DENOISING    #
-    ####################
+    ############################
+    #NOTE     DENOISING    #NOTE
+    ############################
     if args_score.rank == 0:
         logging.info("\nSTARTING DENOISING!\n\n")
         sample_start = time.time()
@@ -140,74 +140,16 @@ def run_vol(args_score, config_score, args_par, config_par):
     for i, batch in enumerate(dataloader):
         img, imgref, vel, slice_id, sample_idx = batch
 
+        #NOTE figure out which of these we want as numpy arrays and which as tensors
         x_mod = img.to(config_score.device)
         x = imgref.to(config_score.device)
         vel_torch = vel.to(config_score.device)
         slice_ids = torch.tensor(slice_id, device=config_score.device)
         sample_ids = torch.tensor(sample_idx, device=config_score.device)
 
-        #TODO enable this to use an arbitrary start and end sigma while grabbing correct sigma_L and c (k index)
-        output_samples = anneal_Langevin_dynamics(x_mod=x_mod, scorenet=test_score, sigmas=sigmas[args_par.levels],\
-                            n_steps_each=args_par.tmax, step_lr=args_par.eta_ncsn, \
-                            final_only=False, verbose=True if args_score.rank == 0 else False,\
-                            denoise=False, add_noise=False)
+        #TODO 
+        #(1) Langevin Dynamics w/gradient clipping and masking support
+        #(2) Calculate Metrics on each device individually
+        #(3) Organize and compile results on GPU 0
+        #(4) Save and Log stuff
         
-        #compile all sampling stats and samples across GPUs
-        #NOTE this dimension may be wrong since output_samples is a list of all the intermediate
-        out_samples = [torch.zeros_like(output_samples[-1]) for _ in range(args.world_size)]
-        dist.all_gather(out_samples, output_samples[-1])
-
-        in_samples = [torch.zeros_like(x_mod) for _ in range(args.world_size)]
-        dist.all_gather(in_samples, x_mod)
-
-        ground_truth_samples = [torch.zeros_like(x) for _ in range(args.world_size)]
-        dist.all_gather(ground_truth_samples, x)
-
-        slice_ids_all = [torch.zeros_like(slice_ids) for _ in range(args.world_size)]
-        dist.all_gather(slice_ids_all, slice_ids)
-
-        sample_ids_all = [torch.zeros_like(sample_ids) for _ in range(args.world_size)]
-        dist.all_gather(sample_ids_all, sample_ids)
-
-        #reduce over the gathered stuff
-        #NOTE taken directly from the OG main_ddp2 runner code
-        if args.rank == 0:
-            output_samples = torch.cat(out_samples)
-
-            init_samples = torch.cat(in_samples)
-            true_samples = torch.cat(ground_truth_samples)
-
-            slice_ids = [slice_ids_all[i].detach().cpu().numpy() for i in range(len(slice_ids_all))]
-            slice_ids = np.concatenate(slice_ids)
-
-            shot_idxs = [shot_idxs_all[i].detach().cpu().numpy() for i in range(len(shot_idxs_all))]
-            shot_idxs = np.concatenate(shot_idxs)
-        
-        #save and log and stuff
-        if args.rank == 0:
-            image_grid = make_grid(output_samples, 6)
-            save_image(image_grid, os.path.join(args.log_sample_path, 'output_samples_{}.png'.format(epoch)))
-            tb_logger.add_image('output_samples', image_grid, global_step=epoch)
-
-            mse = torch.nn.MSELoss()(output_samples, true_samples)
-
-            tb_logger.add_scalar('sample_mse', mse.item(), global_step=epoch)
-            logging.info("Sample MSE: {:.3f}".format(mse.item()))
-
-            np.savetxt(os.path.join(args.log_sample_path, 'sample_slice_ids_{}.txt'.format(epoch)), slice_ids)
-            np.savetxt(os.path.join(args.log_sample_path, 'sample_shot_idxs_{}.txt'.format(epoch)), shot_idxs)
-
-            image_grid = make_grid(init_samples, 6)
-            save_image(image_grid, os.path.join(args.log_sample_path, 'init_samples_{}.png'.format(epoch)))
-            tb_logger.add_image('init_samples', image_grid, global_step=epoch)
-
-            image_grid = make_grid(true_samples, 6)
-            save_image(image_grid, os.path.join(args.log_sample_path, 'true_samples_{}.png'.format(epoch)))
-            tb_logger.add_image('true_samples', image_grid, global_step=epoch)
-
-            logging.info("\n\nFINISHED SAMPLING!\n\n")
-            sample_end = time.time()
-            logging.info("SAMPLING TIME: " + str(timedelta(seconds=(sample_end-sample_start)//1)))
-        
-    #finish distributed processes
-    cleanup()
