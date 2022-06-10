@@ -102,7 +102,7 @@ def anneal_Langevin_dynamics(x_mod, scorenet, sigmas, n_steps_each=200, step_lr=
             last_noise = (len(sigmas) - 1) * torch.ones(x_mod.shape[0]).type_as(x_mod)
             last_noise = last_noise.long()
             x_mod = x_mod + sigmas[-1] ** 2 * scorenet(x_mod, last_noise)
-            images.append(x_mod)
+            images.append(x_mod.detach())
 
         if final_only:
             return [x_mod]
