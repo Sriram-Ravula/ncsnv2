@@ -196,6 +196,16 @@ class Ibalt(TensorDataset):
 
 
         return torch.from_numpy(out_tensors).float()
+
+    def vel_to_reflect(self, tensor):
+        '''
+        Vertical incidence reflectivity
+        '''
+        #depth axis is the second to last axes (B, C, H, W)
+        reflect = torch.zeros_like(tensor)
+        for i in range(tensor.shape[-2]-1):
+            reflect[...,i,:] = (tensor[...,i+1,:]-tensor[...,i,:])/(tensor[...,i+1,:]+tensor[...,i,:])
+        return reflect
     
     def __grab_k_shot_img__(self, sid, n_shots):
         """
@@ -214,8 +224,9 @@ class Ibalt(TensorDataset):
 
         out_img = torch.from_numpy(filtered_img.T).float().unsqueeze(0) #[1, H, W]
         out_vel = torch.from_numpy(vel.T/self.vel_max).float().unsqueeze(0) #normalize to maximum of 5 km/s
+        out_reflect = self.vel_to_reflect(out_vel)
 
-        out_img = torch.cat((out_img, out_vel), dim=0)
+        out_img = torch.cat((out_img, out_reflect), dim=0)
 
         if self.transform is not None:
             out_img = self.transform(out_img)
