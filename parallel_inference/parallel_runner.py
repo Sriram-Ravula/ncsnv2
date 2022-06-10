@@ -62,9 +62,6 @@ def resume(device, ckpt_pth, score, ema=None, sigmas=None):
 def run_vol(args_score, config_score, args_par, config_par):
     setup(args_score)
 
-    #directory for saving run information
-    exp_path = os.path.join(config_par.get('scorenet_experiments_path'), config_par.get('testname'))
-
     #set up the score-based model and parallelize
     torch.cuda.set_device(config_score.device)
     torch.cuda.empty_cache()
@@ -173,6 +170,7 @@ def run_vol(args_score, config_score, args_par, config_par):
         dist.all_gather(sample_ids_all, sample_ids)
 
         #reduce over the gathered stuff
+        #NOTE taken directly from the OG main_ddp2 runner code
         if args.rank == 0:
             output_samples = torch.cat(out_samples)
 

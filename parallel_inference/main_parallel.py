@@ -12,20 +12,13 @@ import torch.utils.tensorboard as tb
 import copy
 import torch.distributed as dist
 
-import runners.ddp_runner2
+import parallel_inference.parallel_runner
 
-def parse_args_and_config(scorenet_config_path):
+def parse_args_and_config(args_par, config_par):
     parser = argparse.ArgumentParser(description=globals()['__doc__'])
 
-    # parser.add_argument('--config', type=str, required=True,  help='Path to the config file')
-    parser.add_argument('--seed', type=int, default=1234, help='Random seed')
-    parser.add_argument('--exp', type=str, default='exp', help='Path for saving running related data.')
-    parser.add_argument('--doc', type=str, required=True, help='A string for documentation purpose. '
-                                                               'Will be the name of the log folder.')
-    parser.add_argument('--comment', type=str, default='', help='A string for experiment comment')
-    parser.add_argument('--verbose', type=str, default='info', help='Verbose level: info | debug | warning | critical')
-    parser.add_argument('--resume_training', action='store_true', help='Whether to resume training')
-    parser.add_argument('--ni', action='store_true', help="No interaction. Suitable for Slurm Job launcher")
+    #NOTE got rid of the training arguments first - these live on config_par now
+    parser.add_argument('--seed', type=int, default=2022, help='Random seed')
 
     parser.add_argument('--world_size', default=-1, type=int, help='number of nodes for distributed training')
     parser.add_argument('--rank', default=-1, type=int, help='node rank for distributed training')
@@ -47,53 +40,18 @@ def parse_args_and_config(scorenet_config_path):
         args.rank = args.local_rank
         device = args.local_rank
 
-    args.log_path = os.path.join(args.exp, 'logs', args.doc)
+    #NOTE this is now going to point to the root of the experiment save folder for denoising
+    args.log_path = os.path.join(config_par.get('scorenet_experiments_path'), config_par.get('testname'))
 
     # parse config file
-    with open(scorenet_config_path, 'r') as f:
+    with open(config_par.get("scorenet_config_path"), 'r') as f:
         config = yaml.safe_load(f)
     new_config = dict2namespace(config)
 
-    tb_path = os.path.join(args.exp, 'tensorboard', args.doc)
-
-    if not args.resume_training:
-        if os.path.exists(args.log_path):
-            overwrite = False
-            if args.ni:
-                overwrite = True
-            else:
-                response = input("Folder already exists. Overwrite? (Y/N)")
-                if response.upper() == 'Y':
-                    overwrite = True
-
-            if overwrite:
-                if args.rank == 0:
-                    shutil.rmtree(args.log_path)
-                    os.makedirs(args.log_path)
-                args.log_sample_path = os.path.join(args.log_path, 'samples')
-                args.tb_path = tb_path
-                if args.rank == 0:
-                    os.makedirs(args.log_sample_path, exist_ok=True)
-                    if os.path.exists(tb_path):
-                        shutil.rmtree(tb_path)
-            else:
-                print("Folder exists. Program halted.")
-                sys.exit(0)
-        else:
-            if args.rank == 0:
-                os.makedirs(args.log_path)
-            args.tb_path = tb_path
-            args.log_sample_path = os.path.join(args.log_path, 'samples')
-            if args.rank == 0:
-                os.makedirs(args.log_sample_path, exist_ok=True)
-
+    #make sure the experiment root exists
+    if not os.path.exists(args.log_path):
         if args.rank == 0:
-            with open(os.path.join(args.log_path, 'config.yml'), 'w') as f:
-                yaml.dump(new_config, f, default_flow_style=False)
-            
-    else:
-        args.tb_path = tb_path
-        args.log_sample_path = os.path.join(args.log_path, 'samples')
+            os.makedirs(args.log_path)
 
     # logging.info("Using device: {}".format(device))
     # print("Using device: {}".format(device))
@@ -105,6 +63,20 @@ def parse_args_and_config(scorenet_config_path):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(args.seed)
     torch.backends.cudnn.benchmark = True
+
+    #save all of the experiment parameters!
+    if args.rank == 0:
+        with open(os.path.join(args.log_path, 'config_score.yml'), 'w') as f:
+            yaml.dump(new_config, f, default_flow_style=False)
+
+        with open(os.path.join(args.log_path, 'args_score.yml'), 'w') as f:
+            yaml.dump(args, f, default_flow_style=False)
+
+        with open(os.path.join(args.log_path, 'config_par.yml'), 'w') as f:
+            yaml.dump(dict2namespace(config_par), f, default_flow_style=False)
+
+        with open(os.path.join(args.log_path, 'args_par.yml'), 'w') as f:
+            yaml.dump(args_par, f, default_flow_style=False)    
 
     return args, new_config
 
@@ -119,6 +91,9 @@ def dict2namespace(config):
     return namespace
 
 def main():
+    ###################################
+    #NOTE Experiment Configs Here #NOTE
+    ###################################
     MdlDir='/scratch/08087/gandhiy/ncsn_experiments/logs/ibalt_256_1024_042022/'
     NCSNSrc='/home/08087/alexard/src/ncsnv2'
     DirExp='/scratch/projects/sparkcognition/data/generative_models/experiments/'
@@ -134,26 +109,36 @@ def main():
         'SMLDDir':SMLDDir,
         'testname':'ibalt256x1024_0420',
         'grids':{'trn':[401,1201],'ncsn':[256,1024],'img':[401,1201],'ld':[256,1024]},
-        'vid':'k_30_r_2'
-        }
+        'vid':'k_30_r_2'}
     
     args_par = {
-        "indx_lst"=[150,170,180,390],
-        "orient"='y',
-        "levels"=[5,6,7,8],
-        "eta_ncsn"=2.e-4,
-        "tmax"=2
+        "indx_lst": [150,170,180,390],
+        "orient": 'y',
+        "levels": [5,6,7,8],
+        "eta_ncsn": 2.e-4,
+        "tmax": 2,
+        "save_all_intermediate": False
     }
+    args_par = dict2namespace(args_par)
 
-    args_score, config_score = parse_args_and_config(config_par['scorenet_experiments_path'])
+    ###################################
+    #NOTE Experiment Configs Here #NOTE
+    ###################################
 
-    if args.rank==0:
-        print("Writing log file to {}".format(args.log_path))
+    args_score, config_score = parse_args_and_config(args_par, config_par)
+
+    if args_score.rank==0:
+        print("Writing log file to {}".format(args_score.log_path)) #NOTE args_score.log_path points to the experiment root now
         print("Exp instance id = {}".format(os.getpid()))
-        print("Exp comment = {}".format(args.comment))
         print("Config =")
         print(">" * 80)
-        config_dict = copy.copy(vars(config))
+        config_dict = copy.copy(vars(config_score))
+        print(yaml.dump(config_dict, default_flow_style=False))
+        print(">" * 80)
+        config_dict = config_par
+        print(yaml.dump(config_dict, default_flow_style=False))
+        print(">" * 80)
+        config_dict = copy.copy(vars(args_par))
         print(yaml.dump(config_dict, default_flow_style=False))
         print("<" * 80)
 
@@ -162,7 +147,7 @@ def main():
 if __name__ == '__main__':
     args_score, config_score, args_par, config_par = main()
 
-    if args.rank==0:
-        print("Spawning " + str(args.world_size) + " processes for DDP")
+    if args_score.rank==0:
+        print("Spawning " + str(args_score.world_size) + " processes for DDP")
 
-    runners.ddp_runner2.train(args, config)
+    parallel_inference.parallel_runner.run_vol(args_score, config_score, args_par, config_par)
