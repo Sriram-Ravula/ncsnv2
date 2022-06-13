@@ -22,6 +22,8 @@ from models import get_sigmas
 from models.ncsnv2 import NCSNv2Deepest, NCSNv2Deepest2
 from models.ema import DDPEMAHelper
 
+from rtm_utils import clipFilter, maskFilter
+
 from parallel_inference.vol_dataset import IbaltParallel
 
 def setup(args_score):
@@ -85,7 +87,6 @@ def run_vol(args_score, config_score, args_par, config_par):
 
     #set up logging (rank 0 only)
     if args_score.rank == 0:
-        # setup logger
         level = getattr(logging, args_score.verbose.upper(), None)
         if not isinstance(level, int):
             raise ValueError('level {} not supported'.format(args_score.verbose))
@@ -108,12 +109,10 @@ def run_vol(args_score, config_score, args_par, config_par):
         logging.info("\n\nRESUMING - LOADING SAVED WEIGHTS\n\n")
         tic = time.time()
 
-    load_path = os.path.join(args_score.log_path, 'checkpoint.pth')
-
     if config_score.model.ema:
-        resume(config_score.device, load_path, score, ema=ema_helper, sigmas=sigmas)
+        resume(config_score.device, config_par.get("scorenet_ckpt_path"), score, ema=ema_helper, sigmas=sigmas)
     else:
-        resume(config_score.device, load_path, score, sigmas=sigmas)
+        resume(config_score.device, config_par.get("scorenet_ckpt_path"), score, sigmas=sigmas)
     
     if args_score.rank == 0:
         logging.info("\n\nFINISHED LOADING FROM CHECKPOINT!\n\n")
@@ -142,8 +141,10 @@ def run_vol(args_score, config_score, args_par, config_par):
 
         #NOTE figure out which of these we want as numpy arrays and which as tensors
         x_mod = img.to(config_score.device)
-        x = imgref.to(config_score.device)
-        vel_torch = vel.to(config_score.device)
+        # x = imgref.to(config_score.device)
+        x = x.detach().cpu().numpy().squeeze()
+        #vel_torch = vel.to(config_score.device)
+        vel = vel.detach().cpu().numpy().squeeze()
         slice_ids = torch.tensor(slice_id, device=config_score.device)
         sample_ids = torch.tensor(sample_idx, device=config_score.device)
 
@@ -152,4 +153,75 @@ def run_vol(args_score, config_score, args_par, config_par):
         #(2) Calculate Metrics on each device individually
         #(3) Organize and compile results on GPU 0
         #(4) Save and Log stuff
+
+        intermediate_imgs = []
+
+        with torch.no_grad():
+            sigma_last = sigmas[-1]
+
+            for l in args_par.levels:
+                labels = torch.ones(x_mod.shape[0], device=x_mod.device) * l
+                labels = labels.long()
+
+                sigma = sigmas[l]
+                step_size = args_par.eta_ncsn * (sigma / sigma_last) ** 2
+
+                for t in range(args_par.tmax):
+                    base_grad = test_score(x_mod, labels)
+                    
+                    if args_par.filter_gradient or args_par.mask_gradient:
+                        grad_npy = base_grad.cpu().detach().numpy()[0,0,...]
+                        
+                        if args_par.filter_gradient:
+                            grad_npy = clipFilter(grad_npy, args_par.filter_gradient[1], args_par.filter_gradient[0])
+                        if args_par.mask_gradient:
+                            grad_npy = maskFilter(grad_npy, vel)
+                        
+                        base_grad = torch.from_numpy(grad_npy).unsqueeze(0).unsqueeze(0).to(config_score.device)
+                    
+                    x_mod = x_mod + step_size*base_grad
+
+                    if args_par.rescale_during_ld:
+                        x_mod = (x_mod - x_mod.min()) / (x_mod.max() - x_mod.min())
+                    
+                    intermediate_imgs.append(x_mod.clone().detach())
+        
+        #(2) calculate metrics now!
+        intermediate_psnr = []
+        intermediate_ssim = []
+        for x_out in intermediate_imgs:
+            psnr_out = PSNR(x_out, x)
+            ssim_out = SSIM(x_out, x)
+
+            intermediate_psnr.append(psnr_out)
+            intermediate_ssim.append(ssim_out)
+        
+        intermediate_psnr = torch.tensor(intermediate_psnr, device=x_mod.device)
+        intermediate_ssim = torch.tensor(intermediate_ssim, device=x_mod.device)
+        if args_par.save_all_intermediate:
+            intermediate_imgs = torch.cat(intermediate_imgs)
+        else:
+            intermediate_imgs = intermediate_imgs[-1]
+        intermediate_imgs = intermediate_imgs.to(x_mod.device)
+
+        #(3) gather the outputs, psnr, ssim, and slice ID on device 0
+        out_samples = [torch.zeros_like(intermediate_imgs) for _ in range(args_score.world_size)]
+        dist.all_gather(out_samples, intermediate_imgs)
+
+        out_psnr = [torch.zeros_like(intermediate_psnr) for _ in range(args_score.world_size)]
+        dist.all_gather(out_psnr, intermediate_psnr)
+
+        out_ssim = [torch.zeros_like(intermediate_ssim) for _ in range(args_score.world_size)]
+        dist.all_gather(out_ssim, intermediate_ssim)
+
+        out_ids = [torch.zeros_like(slice_ids) for _ in range(args_score.world_size)]
+        dist.all_gather(out_ids, slice_ids)
+
+        
+
+
+
+
+
+
         

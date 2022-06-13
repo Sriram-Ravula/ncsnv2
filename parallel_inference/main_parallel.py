@@ -33,9 +33,7 @@ def parse_args_and_config(args_par, config_par):
 
     if 'SLURM_PROCID' in os.environ:
         args.rank = int(os.environ.get("RANK", os.environ.get("SLURM_PROCID", 0)))
-        # args.rank = int(os.environ['SLURM_PROCID'])
         device = args.rank % 4 #torch.cuda.device_count()
-        # print(args.rank)
     else:
         args.rank = args.local_rank
         device = args.local_rank
@@ -117,6 +115,9 @@ def main():
         "levels": [5,6,7,8],
         "eta_ncsn": 2.e-4,
         "tmax": 2,
+        "filter_gradient": [0.001, 0.999], #set this to False if no filter
+        "mask_gradient": True,
+        "rescale_during_ld": False, 
         "save_all_intermediate": False
     }
     args_par = dict2namespace(args_par)
