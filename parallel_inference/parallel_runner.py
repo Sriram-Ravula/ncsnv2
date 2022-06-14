@@ -6,6 +6,7 @@ import os
 import time
 from datetime import timedelta
 import gc
+from pickle import pickle
 
 from skimage.metrics import structural_similarity as SSIM
 from skimage.metrics import peak_signal_noise_ratio as PSNR
@@ -136,24 +137,39 @@ def run_vol(args_score, config_score, args_par, config_par):
         test_score = score
     test_score.eval()
 
+    #make structures to save the final results
+    if args_score.rank == 0:
+        results_list = [] #holds dict entries of the final results
+
+        num_samples = len(dataloader.dataset)
+        output_shape = config_par.get('grids',{'trn':[625,751],'ncsn':[256,256],'img':[401,1201],'ld':[256,1024]})
+
+        if args_par.save_all_intermediate:
+            num_outs = args_par.tmax * len(args_par.levels)
+
+            results_psnr = torch.zeros(num_samples, num_outs, device=config_score.device)
+            results_ssim = torch.zeros(num_samples, num_outs, device=config_score.device)
+            
+            output_shape = [num_samples, num_outs, 1, output_shape['ld'][1], output_shape['ld'][0]]
+        else:
+            results_psnr = torch.zeros(num_samples, device=config_score.device)
+            results_ssim = torch.zeros(num_samples, device=config_score.device)
+
+            output_shape = [num_samples, 1, output_shape['ld'][1], output_shape['ld'][0]]
+        results_out = torch.zeros(output_shape, device=config_score.device)
+
     for i, batch in enumerate(dataloader):
+        #(0) grab batch and put everything in the right type
         img, imgref, vel, slice_id, sample_idx = batch
 
-        #NOTE figure out which of these we want as numpy arrays and which as tensors
         x_mod = img.to(config_score.device)
-        # x = imgref.to(config_score.device)
-        x = x.detach().cpu().numpy().squeeze()
-        #vel_torch = vel.to(config_score.device)
-        vel = vel.detach().cpu().numpy().squeeze()
         slice_ids = torch.tensor(slice_id, device=config_score.device)
         sample_ids = torch.tensor(sample_idx, device=config_score.device)
 
-        #TODO 
+        x = imgref.detach().cpu().numpy().squeeze()
+        vel = vel.detach().cpu().numpy().squeeze()
+        
         #(1) Langevin Dynamics w/gradient clipping and masking support
-        #(2) Calculate Metrics on each device individually
-        #(3) Organize and compile results on GPU 0
-        #(4) Save and Log stuff
-
         intermediate_imgs = []
 
         with torch.no_grad():
@@ -186,7 +202,7 @@ def run_vol(args_score, config_score, args_par, config_par):
                     
                     intermediate_imgs.append(x_mod.clone().detach())
         
-        #(2) calculate metrics now!
+        #(2) calculate metrics
         intermediate_psnr = []
         intermediate_ssim = []
         for x_out in intermediate_imgs:
@@ -198,30 +214,82 @@ def run_vol(args_score, config_score, args_par, config_par):
         
         intermediate_psnr = torch.tensor(intermediate_psnr, device=x_mod.device)
         intermediate_ssim = torch.tensor(intermediate_ssim, device=x_mod.device)
-        if args_par.save_all_intermediate:
-            intermediate_imgs = torch.cat(intermediate_imgs)
+        if args_par.save_all_intermediate: #intermediate_imgs has shape (I, 1, H, W) where I is 1 if !save_all_intermediate
+            intermediate_imgs = torch.cat(intermediate_imgs).to(x_mod.device)
         else:
-            intermediate_imgs = intermediate_imgs[-1]
-        intermediate_imgs = intermediate_imgs.to(x_mod.device)
+            intermediate_imgs = intermediate_imgs[-1].to(x_mod.device)
 
         #(3) gather the outputs, psnr, ssim, and slice ID on device 0
+
+        #making lists of length (num_nodes * gpus_per_node) and
+        #entries are tensors (T*\tau, 1, H, W) or (1, 1, H, W)
         out_samples = [torch.zeros_like(intermediate_imgs) for _ in range(args_score.world_size)]
         dist.all_gather(out_samples, intermediate_imgs)
-
+        
+        #tensors (T*\tau) or (1)
         out_psnr = [torch.zeros_like(intermediate_psnr) for _ in range(args_score.world_size)]
         dist.all_gather(out_psnr, intermediate_psnr)
 
+        #tensors (T*\tau) or (1)
         out_ssim = [torch.zeros_like(intermediate_ssim) for _ in range(args_score.world_size)]
         dist.all_gather(out_ssim, intermediate_ssim)
 
+        #tensors (1)
         out_ids = [torch.zeros_like(slice_ids) for _ in range(args_score.world_size)]
         dist.all_gather(out_ids, slice_ids)
 
-        
+        #tensors (1)
+        out_sample_ids = [torch.zeros_like(sample_ids) for _ in range(args_score.world_size)]
+        dist.all_gather(out_sample_ids, sample_ids)
 
+        #(4) reduce, save, and log stuff
+        if args_score.rank == 0:
+            #save the denoised image from the first slice as a sample to debug
+            if i == 0:
+                true_imgs = imgref
 
+            for i in range(len(out_samples)):
+                #first add the dictionary entry to the list
+                results_entry = {
+                    "slice index": out_ids[i].item(), #TODO see if .item() throws a fit
+                    "outputs": out_samples[i].detach().cpu().numpy(),
+                    "psnr": out_psnr[i].detach().cpu().numpy(),
+                    "ssim": out_ssim[i].detach().cpu().numpy()}
 
+                results_list.append(results_entry)
 
+                #now add the psnr and ssim and output to the proper places based on sample_idx
+                idx = out_sample_ids[i].item()
 
+                if args_par.save_all_intermediate:
+                    results_out[idx] = out_samples[i].detach().clone()
 
-        
+                    results_psnr[idx] = out_psnr[i].detach().clone()
+                    results_ssim[idx] = out_ssim[i].detach().clone()
+                else:
+                    results_out[idx] = out_samples[i].detach().clone().squeeze(0)
+
+                    results_psnr[idx] = out_psnr[i].detach().clone().item()
+                    results_ssim[idx] = out_ssim[i].detach().clone().item()
+
+    if args_score.rank == 0:
+        logging.info("\n\nFINISHED DENOISING!\n\n")
+        sample_end = time.time()
+        logging.info("DENOISING TIME: " + str(timedelta(seconds=(sample_end-sample_start)//1)))
+
+    #log all of the results!
+    results_path = os.path.join(args_score.log_path, "results.pkl")
+    with open(results_path, 'wb') as handle:
+        pickle.dump(results_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
+    
+    output_path = os.path.join(args_score.log_path, "outputs.pt")
+    torch.save(results_out, output_path)
+
+    psnr_path = os.path.join(args_score.log_path, "psnr.pt")
+    torch.save(results_psnr, psnr_path)
+
+    ssim_path = os.path.join(args_score.log_path, "ssim.pt")
+    torch.save(results_ssim, ssim_path)
+
+    #finish distributed processes
+    cleanup()
