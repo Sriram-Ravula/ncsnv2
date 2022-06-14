@@ -11,6 +11,8 @@ import random
 import pickle
 import pandas as pd
 
+from rtm_utils import filterImage
+
 class IbaltParallel(TensorDataset):
     def __init__(self, args, config_dict, n_shots, debug=True):
         self.args = args
@@ -64,7 +66,7 @@ class IbaltParallel(TensorDataset):
 
         if self.orient=='x':
             # vel : ld[1] x ld[0]
-            vel = self.transform_list(torch.from_numpy(self.vel3D[i, :, self.iz[0]:self.iz[1]].T).unsqueeze(0).unsqueeze(0)).float()
+            vel = self.transform_list(torch.from_numpy(self.vel3D[i, :, self.iz[0]:self.iz[1]].T).unsqueeze(0)).float()
 
             # img, imgref : img[0] x img[1]
             img=filterImage(self.vol[i, :, self.iz[0]:self.iz[1]], self.vel3D[i, :, self.iz[0]:self.iz[1]], self.fltr_img[1], self.fltr_img[0], 
@@ -74,7 +76,7 @@ class IbaltParallel(TensorDataset):
                             N=1, useMask=True, rescale=self.rescale, laplace=False)
 
         elif self.orient=='y':
-            vel = self.transform_list(torch.from_numpy(self.vel3D[:, i, self.iz[0]:self.iz[1]].T).unsqueeze(0).unsqueeze(0)).float()
+            vel = self.transform_list(torch.from_numpy(self.vel3D[:, i, self.iz[0]:self.iz[1]].T).unsqueeze(0)).float()
 
             img = filterImage(self.vol[:, i, self.iz[0]:self.iz[1]], self.vel3D[:, i, self.iz[0]:self.iz[1]], self.fltr_img[1], self.fltr_img[0], 
                             N=self.k, useMask=True, rescale=self.rescale, laplace=False)
@@ -83,7 +85,7 @@ class IbaltParallel(TensorDataset):
                             N=1, useMask=True, rescale=self.rescale, laplace=False)
         
         #now convert the img and reference image to proper tensors and shapes
-        imgref = self.transform_list(torch.from_numpy(imgref.T).unsqueeze(0).unsqueeze(0)).float()
-        img = self.transform_list(torch.from_numpy(img.T).unsqueeze(0).unsqueeze(0)).float()
+        imgref = self.transform_list(torch.from_numpy(imgref.T).unsqueeze(0)).float()
+        img = self.transform_list(torch.from_numpy(img.T).unsqueeze(0)).float()
         
         return img, imgref, vel, i, index

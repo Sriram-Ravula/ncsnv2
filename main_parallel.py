@@ -19,6 +19,7 @@ def parse_args_and_config(args_par, config_par):
 
     #NOTE got rid of the training arguments first - these live on config_par now
     parser.add_argument('--seed', type=int, default=2022, help='Random seed')
+    parser.add_argument('--verbose', type=str, default='info', help='Verbose level: info | debug | warning | critical')
 
     parser.add_argument('--world_size', default=-1, type=int, help='number of nodes for distributed training')
     parser.add_argument('--rank', default=-1, type=int, help='node rank for distributed training')
@@ -37,14 +38,16 @@ def parse_args_and_config(args_par, config_par):
     else:
         args.rank = args.local_rank
         device = args.local_rank
+    print(device)
 
     #NOTE this is now going to point to the root of the experiment save folder for denoising
     args.log_path = os.path.join(config_par.get('scorenet_experiments_path'), config_par.get('testname'))
 
     # parse config file
     with open(config_par.get("scorenet_config_path"), 'r') as f:
-        config = yaml.safe_load(f)
-    new_config = dict2namespace(config)
+        config = yaml.unsafe_load(f)
+    # new_config = dict2namespace(config)
+    new_config = config
 
     #make sure the experiment root exists
     if not os.path.exists(args.log_path):
@@ -94,7 +97,7 @@ def main():
     ###################################
     MdlDir='/scratch/08087/gandhiy/ncsn_experiments/logs/ibalt_256_1024_042022/'
     NCSNSrc='/home/08087/alexard/src/ncsnv2'
-    DirExp='/scratch/projects/sparkcognition/data/generative_models/experiments/'
+    DirExp="/scratch/04703/sravula/ncsn_lsrtm_results"#'/scratch/projects/sparkcognition/data/generative_models/experiments/'
     DomDir='/scratch/projects/sparkcognition/data/migration/ibalt/volumes/ibaltcntr_ns_krshots/'
     SMLDDir='/scratch/projects/sparkcognition/data/SMLDVOLPRL/'
 
@@ -114,9 +117,9 @@ def main():
         "orient": 'y',
         "levels": [5,6,7,8],
         "eta_ncsn": 2.e-4,
-        "tmax": 2,
-        "filter_gradient": [0.001, 0.999], #set this to False if no filter
-        "mask_gradient": True,
+        "tmax": 50,
+        "filter_gradient": False, #[0.001, 0.999], #set this to False if no filter
+        "mask_gradient": False,
         "rescale_during_ld": False, 
         "save_all_intermediate": False
     }

@@ -6,7 +6,7 @@ import os
 import time
 from datetime import timedelta
 import gc
-from pickle import pickle
+import pickle
 
 from skimage.metrics import structural_similarity as SSIM
 from skimage.metrics import peak_signal_noise_ratio as PSNR
@@ -93,7 +93,7 @@ def run_vol(args_score, config_score, args_par, config_par):
             raise ValueError('level {} not supported'.format(args_score.verbose))
 
         handler1 = logging.StreamHandler()
-        handler2 = logging.FileHandler(os.path.join(exp_path, 'stdout.txt'))
+        handler2 = logging.FileHandler(os.path.join(args_score.log_path, 'stdout.txt'))
         formatter = logging.Formatter('%(levelname)s - %(filename)s - %(asctime)s - %(message)s')
         handler1.setFormatter(formatter)
         handler2.setFormatter(formatter)
@@ -142,19 +142,15 @@ def run_vol(args_score, config_score, args_par, config_par):
         results_list = [] #holds dict entries of the final results
 
         num_samples = len(dataloader.dataset)
+        num_outs = args_par.tmax * len(args_par.levels)
         output_shape = config_par.get('grids',{'trn':[625,751],'ncsn':[256,256],'img':[401,1201],'ld':[256,1024]})
 
-        if args_par.save_all_intermediate:
-            num_outs = args_par.tmax * len(args_par.levels)
+        results_psnr = torch.zeros(num_samples, num_outs, device=config_score.device)
+        results_ssim = torch.zeros(num_samples, num_outs, device=config_score.device)
 
-            results_psnr = torch.zeros(num_samples, num_outs, device=config_score.device)
-            results_ssim = torch.zeros(num_samples, num_outs, device=config_score.device)
-            
+        if args_par.save_all_intermediate:
             output_shape = [num_samples, num_outs, 1, output_shape['ld'][1], output_shape['ld'][0]]
         else:
-            results_psnr = torch.zeros(num_samples, device=config_score.device)
-            results_ssim = torch.zeros(num_samples, device=config_score.device)
-
             output_shape = [num_samples, 1, output_shape['ld'][1], output_shape['ld'][0]]
         results_out = torch.zeros(output_shape, device=config_score.device)
 
@@ -163,8 +159,8 @@ def run_vol(args_score, config_score, args_par, config_par):
         img, imgref, vel, slice_id, sample_idx = batch
 
         x_mod = img.to(config_score.device)
-        slice_ids = torch.tensor(slice_id, device=config_score.device)
-        sample_ids = torch.tensor(sample_idx, device=config_score.device)
+        slice_ids = slice_id.to(config_score.device)
+        sample_ids = sample_idx.to(config_score.device)
 
         x = imgref.detach().cpu().numpy().squeeze()
         vel = vel.detach().cpu().numpy().squeeze()
@@ -200,14 +196,14 @@ def run_vol(args_score, config_score, args_par, config_par):
                     if args_par.rescale_during_ld:
                         x_mod = (x_mod - x_mod.min()) / (x_mod.max() - x_mod.min())
                     
-                    intermediate_imgs.append(x_mod.clone().detach())
+                    intermediate_imgs.append(torch.clip(x_mod.clone().detach(), min=0., max=1.))
         
         #(2) calculate metrics
         intermediate_psnr = []
         intermediate_ssim = []
         for x_out in intermediate_imgs:
-            psnr_out = PSNR(x_out, x)
-            ssim_out = SSIM(x_out, x)
+            psnr_out = PSNR(x_out.detach().cpu().numpy().squeeze(), x)
+            ssim_out = SSIM(x_out.detach().cpu().numpy().squeeze(), x)
 
             intermediate_psnr.append(psnr_out)
             intermediate_ssim.append(ssim_out)
@@ -246,12 +242,14 @@ def run_vol(args_score, config_score, args_par, config_par):
         if args_score.rank == 0:
             #save the denoised image from the first slice as a sample to debug
             if i == 0:
-                true_imgs = imgref
+                save_image(imgref, os.path.join(args_score.log_path, "gt_sample.png"))
+                save_image(img, os.path.join(args_score.log_path, "kshot_sample.png"))
+                save_image(intermediate_imgs[-1].unsqueeze(0), os.path.join(args_score.log_path, "denoised_sample.png"))
 
             for i in range(len(out_samples)):
                 #first add the dictionary entry to the list
                 results_entry = {
-                    "slice index": out_ids[i].item(), #TODO see if .item() throws a fit
+                    "slice index": out_ids[i].item(),
                     "outputs": out_samples[i].detach().cpu().numpy(),
                     "psnr": out_psnr[i].detach().cpu().numpy(),
                     "ssim": out_ssim[i].detach().cpu().numpy()}
@@ -263,33 +261,30 @@ def run_vol(args_score, config_score, args_par, config_par):
 
                 if args_par.save_all_intermediate:
                     results_out[idx] = out_samples[i].detach().clone()
-
-                    results_psnr[idx] = out_psnr[i].detach().clone()
-                    results_ssim[idx] = out_ssim[i].detach().clone()
                 else:
                     results_out[idx] = out_samples[i].detach().clone().squeeze(0)
 
-                    results_psnr[idx] = out_psnr[i].detach().clone().item()
-                    results_ssim[idx] = out_ssim[i].detach().clone().item()
+                results_psnr[idx] = out_psnr[i].detach().clone()
+                results_ssim[idx] = out_ssim[i].detach().clone()
 
     if args_score.rank == 0:
         logging.info("\n\nFINISHED DENOISING!\n\n")
         sample_end = time.time()
         logging.info("DENOISING TIME: " + str(timedelta(seconds=(sample_end-sample_start)//1)))
 
-    #log all of the results!
-    results_path = os.path.join(args_score.log_path, "results.pkl")
-    with open(results_path, 'wb') as handle:
-        pickle.dump(results_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
-    
-    output_path = os.path.join(args_score.log_path, "outputs.pt")
-    torch.save(results_out, output_path)
+        #log all of the results!
+        results_path = os.path.join(args_score.log_path, "results.pkl")
+        with open(results_path, 'wb') as handle:
+            pickle.dump(results_list, handle, protocol=pickle.HIGHEST_PROTOCOL)
+        
+        output_path = os.path.join(args_score.log_path, "outputs.pt")
+        torch.save(results_out, output_path)
 
-    psnr_path = os.path.join(args_score.log_path, "psnr.pt")
-    torch.save(results_psnr, psnr_path)
+        psnr_path = os.path.join(args_score.log_path, "psnr.pt")
+        torch.save(results_psnr, psnr_path)
 
-    ssim_path = os.path.join(args_score.log_path, "ssim.pt")
-    torch.save(results_ssim, ssim_path)
+        ssim_path = os.path.join(args_score.log_path, "ssim.pt")
+        torch.save(results_ssim, ssim_path)
 
     #finish distributed processes
     cleanup()
