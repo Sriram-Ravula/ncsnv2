@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -A 'DMS21001'
-#SBATCH -o 'NCSN_VOL'
+#SBATCH -o 'NCSN_VOL2'
 #SBATCH -p 'v100'
-#SBATCH -J 'NCSN_VOL'
+#SBATCH -J 'NCSN_VOL2'
 #SBATCH --nodes=2
 #SBATCH --ntasks-per-node=4
 #SBATCH -t 02:00:00
@@ -22,4 +22,4 @@ cd /scratch/04703/sravula/ncsnv2
 module load conda
 conda activate score2
 
-srun python3 main_parallel.py
+srun python3 main_parallel2.py

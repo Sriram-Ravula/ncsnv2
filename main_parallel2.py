@@ -95,34 +95,35 @@ def main():
     ###################################
     #NOTE Experiment Configs Here #NOTE
     ###################################
-    MdlDir='/scratch/08087/gandhiy/ncsn_experiments/logs/ibalt_256_1024_042022/'
+    MdlDir='/scratch/projects/sparkcognition/data/models/ncsnnew_1024x256_l5-180_ibaltcntr_305/'
     NCSNSrc='/home/08087/alexard/src/ncsnv2'
     DirExp="/scratch/projects/sparkcognition/data/NCSN_VOL_PAR/"
     DomDir='/scratch/projects/sparkcognition/data/migration/ibalt/volumes/ibaltcntr_ns_krshots/'
     SMLDDir='/scratch/projects/sparkcognition/data/SMLDVOLPRL/'
 
     config_par={'scorenet_config_path':MdlDir+'config.yml',
-        'scorenet_ckpt_path':MdlDir+'checkpoint_499.pth',
-        'scorenet_model_path':NCSNSrc,
-        'scorenet_sigmas_path':MdlDir+'sigmas_499.txt',
-        'scorenet_experiments_path':DirExp,
-        'DomDir':DomDir,
-        'SMLDDir':SMLDDir,
-        'testname':'ibalt_06-14-22_y_k80-r0_test1',
-        'grids':{'trn':[401,1201],'ncsn':[256,1024],'img':[401,1201],'ld':[256,1024]},
-        'vid':'k_80_r_0'}
+     'scorenet_ckpt_path':MdlDir+'checkpoint_999.pth',
+     'scorenet_model_path':NCSNSrc,
+     'scorenet_sigmas_path':MdlDir+'sigmas_999.txt',
+     'scorenet_experiments_path':DirExp,
+     'DomDir':DomDir,
+     'SMLDDir':SMLDDir,
+     'testname':'ncsnnew_1024x256_l5-180_ibaltcntr_305',
+     'grids':{'trn':[401,1201],'ncsn':[256,1024],'img':[401,1201],'ld':[256,1024]},
+     'vid':'k_50_r_7'
+    }
     
     args_par = {
         "indx_lst": list(range(401)),
         "orient": 'y',
-        "levels": [15,],
-        "eta_ncsn": 2.e-4,
-        "tmax": 250,
+        "levels": np.arange(9,29,2),
+        "eta_ncsn": 1.e-4,
+        "tmax": 25,
         "filter_gradient": False, #set this to False if no filter
         "mask_gradient": False,
         "rescale_during_ld": False, 
         "save_all_intermediate": False,
-        "new_model": False
+        "new_model": True
     }
     args_par = dict2namespace(args_par)
 

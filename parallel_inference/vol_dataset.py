@@ -14,13 +14,16 @@ import pandas as pd
 from rtm_utils import filterImage
 
 class IbaltParallel(TensorDataset):
-    def __init__(self, args, config_dict, n_shots, debug=True):
+    def __init__(self, args, config_dict, n_shots, rank, world_size, debug=True):
         self.args = args
         self.config = config_dict
         self.n_shots = n_shots
         self.debug = debug
 
-        if self.debug:
+        self.rank = rank
+        self.world_size = world_size
+
+        if self.debug and rank==0:
             print("Starting to build dataset........")
             tic = time.time()
 
@@ -52,17 +55,22 @@ class IbaltParallel(TensorDataset):
         if self.iz is None:
             self.iz = (0, self.grids['ld'][1])
 
-        if self.debug:
+        #make a new length to account for DDP - must have (world_size mod len(dataset)) = 0
+        self.padded_length = np.ceil(len(self.indx_lst) / self.world_size) * self.world_size
+        self.padded_length = int(self.padded_length)
+
+        if self.debug and rank==0:
             toc = time.time()
             print("TIME ELAPSED: ", str(toc - tic))
             print("Finished building dataset!")
+            print("LENGTH: ", str(self.padded_length))
     
     def __len__(self):
-        return len(self.indx_lst)
+        return self.padded_length 
     
     def __getitem__(self, index):
         #grab the appropriate slice ID from our list
-        i = self.indx_lst[index]
+        i = self.indx_lst[index % len(self.indx_lst)]
 
         if self.orient=='x':
             # vel : ld[1] x ld[0]
