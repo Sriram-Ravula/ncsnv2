@@ -24,7 +24,7 @@ from models import get_sigmas
 from models.ncsnv2 import NCSNv2Deepest, NCSNv2Deepest2
 from models.ema import DDPEMAHelper
 
-from rtm_utils import clipFilter, maskFilter
+from rtm_utils import clipFilterTorch, maskFilterTorch, normalizeFilterTorch
 
 from parallel_inference.vol_dataset import IbaltParallel
 
@@ -170,9 +170,9 @@ def run_vol(args_score, config_score, args_par, config_par):
         x_mod = img.to(config_score.device)
         slice_ids = slice_id.to(config_score.device)
         sample_ids = sample_idx.to(config_score.device)
+        vel = vel.to(config_score.device)
 
         x = imgref.detach().cpu().numpy().squeeze()
-        vel = vel.detach().cpu().numpy().squeeze()
         
         #(1) Langevin Dynamics w/gradient clipping and masking support
         intermediate_imgs = []
@@ -189,21 +189,16 @@ def run_vol(args_score, config_score, args_par, config_par):
 
                 for t in range(args_par.tmax):
                     base_grad = test_score(x_mod, labels)
-                    
-                    if args_par.filter_gradient or args_par.mask_gradient:
-                        grad_npy = base_grad.cpu().detach().numpy()[0,0,...]
-                        
-                        if args_par.filter_gradient:
-                            grad_npy = clipFilter(grad_npy, args_par.filter_gradient[1], args_par.filter_gradient[0])
-                        if args_par.mask_gradient:
-                            grad_npy = maskFilter(grad_npy, vel)
-                        
-                        base_grad = torch.from_numpy(grad_npy).unsqueeze(0).unsqueeze(0).to(config_score.device).float()
+
+                    if args_par.filter_gradient:
+                        base_grad = clipFilterTorch(base_grad, args_par.filter_gradient[1], args_par.filter_gradient[0])
+                    if args_par.mask_gradient:
+                        base_grad = maskFilterTorch(base_grad, vel)
                     
                     x_mod = x_mod + step_size*base_grad
 
                     if args_par.rescale_during_ld:
-                        x_mod = (x_mod - x_mod.min()) / (x_mod.max() - x_mod.min())
+                        x_mod = normalizeFilterTorch(x_mod)
                     
                     intermediate_imgs.append(torch.clip(x_mod.clone().detach(), min=0., max=1.))
         

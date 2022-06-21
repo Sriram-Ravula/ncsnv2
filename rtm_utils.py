@@ -2,6 +2,7 @@ import os
 import yaml
 import numpy as np
 import matplotlib.pyplot as plt
+import torch
 
 from os.path import join
 from scipy.signal import butter, lfilter
@@ -47,6 +48,20 @@ def clipFilter(im, qmax, qmin):
     im = np.clip(im, a_min=sorted_im[min_idx], a_max = sorted_im[max_idx - 1])
     return im
 
+def clipFilterTorch(im, qmax, qmin):
+    num_elements = im.numel()
+
+    min_clip_num = int(num_elements * qmin) #number of elements below the qmin percentile 
+    max_clip_num = int(num_elements * (1 - qmax)) #" " above the qmax percentile
+
+    min_k = torch.max(torch.topk(im.flatten(), k=min_clip_num, largest=False)[0])
+    max_k = torch.min(torch.topk(im.flatten(), k=max_clip_num, largest=True)[0])
+
+    im = torch.clip(im, min=min_k, max=max_k)
+
+    return im
+
+
 def maskFilter(im, vel, threshold=1.65, return_mask = False):
     mask = np.ones(vel.shape)
     x,y = np.where(vel < threshold)
@@ -56,10 +71,20 @@ def maskFilter(im, vel, threshold=1.65, return_mask = False):
     else:
         return mask * im
 
+def maskFilterTorch(im, vel, threshold=1.65, return_mask = False):
+    mask = torch.ones_like(vel)
+    mask[mask < threshold] = 0
+    if return_mask:
+        return mask * im, mask
+    else:
+        return mask * im
+
 def normalizeFilter(im):
     return (im - np.min(im))/(np.max(im) - np.min(im))
     # return im/np.max(abs(im))
 
+def normalizeFilterTorch(im):
+    return (im - torch.min(im))/(torch.max(im) - torch.min(im))
 
 def filterImage1(data, vel, vmax, vmin):
     return filterImage(data, vel, vmax, vmin)

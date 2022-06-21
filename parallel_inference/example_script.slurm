@@ -1,17 +1,17 @@
 #!/bin/bash
 #SBATCH -A 'DMS21001'
-#SBATCH -o 'NCSN_VOL'
+#SBATCH -o 'IBALT_k50r7'
 #SBATCH -p 'v100'
-#SBATCH -J 'NCSN_VOL'
-#SBATCH --nodes=2
+#SBATCH -J 'IBALT_k50r7'
+#SBATCH --nodes=8
 #SBATCH --ntasks-per-node=4
-#SBATCH -t 02:00:00
+#SBATCH -t 01:00:00
 #SBATCH --mail-user 'sriram.ravula@utexas.edu' 
 #SBATCH --mail-type 'ALL'
 #SBATCH --cpus-per-task 10
 
 export MASTER_PORT=12355
-export WORLD_SIZE=8
+export WORLD_SIZE=32
 
 echo "NODELIST="${SLURM_NODELIST}
 master_addr=$(scontrol show hostnames "$SLURM_JOB_NODELIST" | head -n 1)
