@@ -73,7 +73,7 @@ def maskFilter(im, vel, threshold=1.65, return_mask = False):
 
 def maskFilterTorch(im, vel, threshold=1.65, return_mask = False):
     mask = torch.ones_like(vel)
-    mask[mask < threshold] = 0
+    mask[vel < threshold] = 0
     if return_mask:
         return mask * im, mask
     else:
