@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH -A 'DMS21001'
-#SBATCH -o 'IBALT_k50r7'
+#SBATCH -o 'IBALT_k80r4'
 #SBATCH -p 'v100'
-#SBATCH -J 'IBALT_k50r7'
+#SBATCH -J 'IBALT_k80r4'
 #SBATCH --nodes=8
 #SBATCH --ntasks-per-node=4
 #SBATCH -t 01:00:00

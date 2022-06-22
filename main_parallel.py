@@ -108,14 +108,14 @@ def main():
         'scorenet_experiments_path':DirExp,
         'DomDir':DomDir,
         'SMLDDir':SMLDDir,
-        'testname':'ncsnnew_1024x256_l5-180_ibaltcntr_305_k50r7_06-21-22',
+        'testname':'ncsnnew_1024x256_l5-180_ibaltcntr_305_k80r4_06-21-22',
         'grids':{'trn':[401,1201],'ncsn':[256,1024],'img':[401,1201],'ld':[256,1024]},
-        'vid':'k_50_r_7'}
+        'vid':'k_80_r_4'}
     
     args_par = {
         "indx_lst": list(range(401)),
         "orient": 'y',
-        "levels": np.arange(9,29,2),
+        "levels": np.arange(15,29,2),
         "eta_ncsn": 1.e-4,
         "tmax": 25,
         "filter_gradient": [0.001, 0.999], #set this to False if no filter

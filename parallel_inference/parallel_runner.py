@@ -246,9 +246,9 @@ def run_vol(args_score, config_score, args_par, config_par):
         out_ids = [torch.zeros_like(slice_ids) for _ in range(args_score.world_size)]
         dist.all_gather(out_ids, slice_ids)
 
-        #tensors (1)
-        out_sample_ids = [torch.zeros_like(sample_ids) for _ in range(args_score.world_size)]
-        dist.all_gather(out_sample_ids, sample_ids)
+        # #tensors (1)
+        # out_sample_ids = [torch.zeros_like(sample_ids) for _ in range(args_score.world_size)]
+        # dist.all_gather(out_sample_ids, sample_ids)
 
         #(4) reduce, save, and log stuff
         if args_score.rank == 0:
