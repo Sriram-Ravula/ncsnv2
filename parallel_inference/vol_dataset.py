@@ -53,7 +53,7 @@ class IbaltParallel(TensorDataset):
 
         self.iz = self.config.get('iz', None)
         if self.iz is None:
-            self.iz = (0, self.grids['ld'][1])
+            self.iz = (0, self.grids['img'][1])
 
         #make a new length to account for DDP - must have (world_size mod len(dataset)) = 0
         self.padded_length = np.ceil(len(self.indx_lst) / self.world_size) * self.world_size
