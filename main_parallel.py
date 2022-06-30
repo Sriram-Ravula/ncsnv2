@@ -108,7 +108,7 @@ def main():
         'scorenet_experiments_path':DirExp,
         'DomDir':DomDir,
         'SMLDDir':SMLDDir,
-        'testname':'ncsnnew_1024x256_l5-180_ibaltcntr_305_k50r7_06-23-22',
+        'testname':'ncsnnew_1024x256_l5-180_ibaltcntr_305_k50r7_06-30-22_TEST-MULTISAMPLE',
         'grids':{'trn':[401,1201],'ncsn':[256,1024],'img':[401,1201],'ld':[256,1024]},
         'vid':'k_50_r_7'}
     
@@ -119,7 +119,7 @@ def main():
         "eta_ncsn": 1.e-4,
         "eta_noise": 1.e-8, #NOTE this is a new feature!
         "tmax": 25,
-        "num_samples_per_slice": 10, #NOTE this is a new feature!
+        "num_samples_per_slice": 2, #NOTE this is a new feature!
         "filter_gradient": [0.001, 0.999], #set this to False if no filter
         "mask_gradient": True,
         "rescale_during_ld": False, 
