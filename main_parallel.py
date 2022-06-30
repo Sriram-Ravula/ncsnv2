@@ -117,7 +117,9 @@ def main():
         "orient": 'y',
         "levels": np.arange(9,29,2),
         "eta_ncsn": 1.e-4,
+        "eta_noise": 1.e-8, #NOTE this is a new feature!
         "tmax": 25,
+        "num_samples_per_slice": 10, #NOTE this is a new feature!
         "filter_gradient": [0.001, 0.999], #set this to False if no filter
         "mask_gradient": True,
         "rescale_during_ld": False, 
