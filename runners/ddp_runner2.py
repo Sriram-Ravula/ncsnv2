@@ -17,7 +17,7 @@ import torch.utils.tensorboard as tb
 
 from models import anneal_Langevin_dynamics
 from models import get_sigmas
-from models.ncsnv2 import NCSNv2Deepest, NCSNv2Deepest2, NCSNv2Deepest2_supervised
+from models.ncsnv2 import NCSNv2Deepest, NCSNv2Deepest2, NCSNv2Deepest2_supervised, NCSNv2_Custom
 from models.ema import DDPEMAHelper
 
 from datasets import get_dataset
@@ -107,7 +107,9 @@ def train(args, config):
     torch.cuda.set_device(config.device)
     torch.cuda.empty_cache()
     #score = NCSNv2Deepest(config).to(rank)
-    if config.model.sigma_dist == 'supervised':
+    if hasattr(config, 'architecture'):
+        score = NCSNv2_Custom(config).to(config.device)
+    elif config.model.sigma_dist == 'supervised':
         score = NCSNv2Deepest2_supervised(config).to(config.device)
     else:
         score = NCSNv2Deepest2(config).to(config.device)
