@@ -452,6 +452,137 @@ class NCSNv2Deepest2(nn.Module):
 
         return output
 
+class NCSNv2_Custom(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.logit_transform = config.data.logit_transform
+        self.rescaled = config.data.rescaled
+        self.norm = get_normalization(config, conditional=False)
+        self.ngf = ngf = config.model.ngf
+        self.num_classes = config.model.num_classes
+        self.act = act = get_act(config)
+        self.register_buffer('sigmas', get_sigmas(config))
+        self.config = config
+
+        self.normalizer = self.norm(ngf, self.num_classes)
+
+        #start and end convolutions are the same always
+        self.begin_conv = nn.Conv2d(config.data.channels, ngf, 3, stride=1, padding=1)
+        self.end_conv = nn.Conv2d(ngf, config.data.channels, 3, stride=1, padding=1)
+
+        #define all the residual layers
+        self.num_down_layers = self.config.architecture.num_downsample
+        self.dilation_list = self.config.architecture.dilation
+        self.channel_fac_list = self.config.architecture.channel_fac
+        
+        self.encoder = []
+        self.decoder = []
+
+        #first residual and last refine blocks are the same always
+        self.encoder.append(nn.ModuleList([
+            ResidualBlock(self.ngf, self.ngf, resample=None, act=act,
+                          normalization=self.norm),
+            ResidualBlock(self.ngf, self.ngf, resample=None, act=act,
+                          normalization=self.norm)])
+        )
+        for i in range(self.num_down_layers):
+            #encoder layers
+            ngf_in = self.ngf * self.channel_fac_list[i-1] if i>0 else self.ngf
+            ngf_out = self.ngf * self.channel_fac_list[i]
+
+            dilation = self.dilation_list[i]
+            if dilation == 1:
+                dilation = None
+
+            self.encoder.append(   
+                nn.ModuleList([
+                    ResidualBlock(ngf_in, ngf_out, resample='down', act=act,
+                                normalization=self.norm, dilation=dilation),
+                    ResidualBlock(ngf_out, ngf_out, resample=None, act=act,
+                                normalization=self.norm, dilation=dilation)])
+            )
+
+            #decoder layers
+            start = True if i==0 else False
+
+            j = self.num_down_layers - i - 1 #the index for counting backward for refine blocks
+
+            ngf_in_list = [self.ngf * self.channel_fac_list[j]] #first add the channels from the encoder layer
+            if i > 0:
+                ngf_in_list.append(self.ngf * self.channel_fac_list[j]) 
+            dec_ngf_out = self.ngf * self.channel_fac_list[j-1] if j>0 else self.ngf
+
+            self.decoder.append(
+                RefineBlock(ngf_in_list, dec_ngf_out, act=act, start=start)
+            )
+
+        self.decoder.append(
+            RefineBlock([self.ngf, self.ngf], self.ngf, act=act, end=True)
+        )
+
+        self.encoder = nn.ModuleList(self.encoder)
+        self.decoder = nn.ModuleList(self.decoder)
+
+    def _compute_cond_module(self, module, x):
+        for m in module:
+            x = m(x)
+        return x
+    
+    def set_sigmas(self, sigmas):
+        """
+        Function to set the values of sigma for this model in case they change during training/inference.
+
+        Parameters:
+            sigmas: The new list of sigmas to use. Torch tensor with shape [num_noise_levels].
+        """
+        self.sigmas = torch.squeeze(sigmas).type_as(self.sigmas)
+
+        #make sure it has dimension > 0 if it is a singleton
+        #we want to have a 1D tensor for indexing  
+        if self.sigmas.numel() == 1:
+            self.sigmas = torch.unsqueeze(self.sigmas, 0)
+
+    def forward(self, x, y, sigmas=None):
+        if not self.logit_transform and not self.rescaled:
+            h = 2 * x - 1.
+        else:
+            h = x
+
+        output = self.begin_conv(h)
+
+        encoder_outs = [output]
+        for enc_layer in self.encoder:
+            encoder_outs.append(
+                self._compute_cond_module(enc_layer, encoder_outs[-1])
+            )
+        
+        decoder_outs = []
+        for i, dec_layer in enumerate(self.decoder):
+            if i == 0:
+                dec_input = [encoder_outs[-i-1]]
+            else:
+                dec_input = [encoder_outs[-i-1], decoder_outs[-1]]
+            decoder_outs.append(
+                dec_layer(dec_input, encoder_outs[-i-1].shape[2:])
+            )
+
+        output = decoder_outs[-1]
+        output = self.normalizer(output)
+        output = self.act(output)
+        output = self.end_conv(output)
+
+        #We have the option to have a fixed set of sigmas for normal operation
+        #Or a variable set of sigmas that we pass in to the forward function for dynamic operation (e.g. RTM_N dynamic)
+        #Sigmas is a Torch tensor with shape [num_noise_levels]
+        if sigmas is None:
+            used_sigmas = self.sigmas[y].view(x.shape[0], *([1] * len(x.shape[1:])))
+        else:
+            used_sigmas = sigmas
+
+        output = output / used_sigmas
+
+        return output
+
 class NCSNv2Deepest2_supervised(nn.Module):
     def __init__(self, config):
         super().__init__()
