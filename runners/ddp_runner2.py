@@ -161,6 +161,9 @@ def train(args, config):
         tb_logger = tb.SummaryWriter(log_dir=args.tb_path)
         logging.info("\nSTARTING TRAINING!\n\n")
         train_start = time.time()
+
+        if hasattr(config, 'architecture'):
+            logging.info("\nUSING CUSTOM DEFINED ARCHITECTURE\n\n")
     
     #check if we need to resume
     if args.resume_training:

@@ -17,13 +17,13 @@ import torch.utils.tensorboard as tb
 
 from models import anneal_Langevin_dynamics
 from models import get_sigmas
-from models.ncsnv2 import NCSNv2Deepest2_supervised_unconditional
+from models.ncsnv2 import NCSNv2Deepest2_Supervised_NoCondition
 from models.ema import DDPEMAHelper
 
 from datasets import get_dataset
 
 from losses import get_optimizer
-from losses.dsm import anneal_dsm_score_estimation, rtm_loss, supervised_loss, supervised_conditional
+from losses.dsm import supervised_unconditional
     
 def setup(args):
     dist.init_process_group(backend=args.dist_backend, init_method=args.dist_url,
@@ -106,8 +106,8 @@ def train(args, config):
     #set up the score-based model and parallelize
     torch.cuda.set_device(config.device)
     torch.cuda.empty_cache()
-    #score = NCSNv2Deepest(config).to(rank)
-    score = NCSNv2Deepest2_supervised_unconditional(config).to(config.device)
+
+    score = NCSNv2Deepest2_Supervised_NoCondition(config).to(config.device)
     score = torch.nn.SyncBatchNorm.convert_sync_batchnorm(score)
     score = DDP(score, device_ids=[config.device], output_device=config.device, find_unused_parameters=False)
 
@@ -123,18 +123,6 @@ def train(args, config):
     optimizer = get_optimizer(config, score.parameters())
     start_epoch = 0
     step = 0
-
-    #set up sigmas and any running lists
-    sigmas = get_sigmas(config).to(config.device)
-    if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
-        n_shots = np.asarray(config.model.n_shots).squeeze()
-        n_shots = torch.from_numpy(n_shots).to(config.device)
-        if n_shots.numel() == 1:
-            n_shots = torch.unsqueeze(n_shots, 0)
-        
-        if config.model.sigma_dist == 'rtm_dynamic':
-            total_n_shots_count = torch.zeros(n_shots.numel(), device=config.device)
-            sigmas_running = torch.zeros(n_shots.numel(), device=config.device)
 
     #set up logging (rank 0 only)
     if args.rank == 0:
@@ -167,15 +155,9 @@ def train(args, config):
         eps = config.optim.eps
 
         if config.model.ema:
-            if config.model.sigma_dist == 'rtm_dynamic':
-                start_epoch, step = resume(config.device, load_path, score, eps, optimizer, ema_helper, sigmas, total_n_shots_count, sigmas_running)
-            else:
-                start_epoch, step = resume(config.device, load_path, score, eps, optimizer, ema_helper)
+            start_epoch, step = resume(config.device, load_path, score, eps, optimizer, ema_helper)
         else:
-            if config.model.sigma_dist == 'rtm_dynamic':
-                start_epoch, step = resume(config.device, load_path, score, eps, optimizer, None, sigmas, total_n_shots_count, sigmas_running)
-            else:
-                start_epoch, step = resume(config.device, load_path, score, eps, optimizer)
+            start_epoch, step = resume(config.device, load_path, score, eps, optimizer)
 
         start_epoch += 1 #account for when checkpointing occurs!
         
@@ -195,9 +177,6 @@ def train(args, config):
         #prepare counters for epoch stats
         epoch_train_loss = torch.zeros(1, device=config.device) 
         num_samples = torch.zeros(1, device=config.device)
-        if config.model.sigma_dist == 'rtm_dynamic':
-            total_n_shots_count_epoch = torch.zeros(n_shots.numel(), device=config.device)
-            sigmas_running_epoch = torch.zeros(n_shots.numel(), device=config.device)
 
         score.train()
 
@@ -212,55 +191,7 @@ def train(args, config):
                 X = X.to(config.device)
                 batch = (X, y)
             
-            if config.model.sigma_dist == 'rtm':
-                train_loss = rtm_loss(score, batch, n_shots, sigmas, \
-                                dynamic_sigmas=False, anneal_power=config.training.anneal_power, val=False)
-            elif config.model.sigma_dist == 'rtm_dynamic':
-                train_loss, sum_rmses_list, n_shots_count = supervised_conditional(score, batch, n_shots, sigmas, \
-                                                                dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=False)
-                total_n_shots_count_epoch += n_shots_count
-                sigmas_running_epoch += sum_rmses_list
-            elif config.model.sigma_dist == 'supervised':
-                train_loss = supervised_loss(score, batch, anneal_power=config.training.anneal_power)
-            else:
-                train_loss = anneal_dsm_score_estimation(score, batch, sigmas, anneal_power=config.training.anneal_power)
-
-            # #checking if we have a valid loss or not
-            # if torch.isfinite(train_loss) and (not torch.isnan(train_loss)):
-            #     valid_grad = torch.ones(1, device=rank)
-            # else: 
-            #     valid_grad = torch.zeros(1, device=rank)
-            # dist.all_reduce(valid_grad, op=dist.ReduceOp.SUM)
-
-            # if valid_grad < world_size:
-            #     del train_loss
-            #     if rank == 0:
-            #         logging.info("step: {}, Bad loss - skipping batch".format(step))
-            #     continue
-
-            #checking if we have a valid loss or not
-            if torch.isfinite(train_loss) and (not torch.isnan(train_loss)):
-                valid_grad = torch.tensor(0, device=config.device)
-            else:
-                valid_grad = torch.tensor(2, device=config.device) ** args.rank
-            dist.all_reduce(valid_grad, op=dist.ReduceOp.SUM)
-
-            if valid_grad > 0:
-                del train_loss
-
-                logging.info("step: {}, Bad loss".format(step))
-                continue
-                # bad_ranks = []
-                # while(True):
-                #     bad = int(torch.log2(valid_grad))
-                #     valid_grad = valid_grad - 2**bad
-                #     bad_ranks.append(bad)
-                #     if valid_grad == 0:
-                #         break
-
-                # if args.rank == 0:
-                #     logging.info("step: {}, Bad loss ranks {}".format(step, bad_ranks))
-                # continue
+            train_loss = supervised_unconditional(score, batch)
 
             optimizer.zero_grad(set_to_none=True) # moving before loss calc for loss scrubbing
             train_loss.backward()
@@ -295,19 +226,9 @@ def train(args, config):
         #compile all epoch stats across all GPUs
         dist.all_reduce(epoch_train_loss, op=dist.ReduceOp.SUM)
         dist.all_reduce(num_samples, op=dist.ReduceOp.SUM)
-        if config.model.sigma_dist == 'rtm_dynamic':
-            dist.all_reduce(total_n_shots_count_epoch, op=dist.ReduceOp.SUM)
-            dist.all_reduce(sigmas_running_epoch, op=dist.ReduceOp.SUM)
         
         #reduce over stats
         epoch_train_loss = epoch_train_loss / num_samples
-        if config.model.sigma_dist == 'rtm_dynamic':
-            total_n_shots_count += total_n_shots_count_epoch
-            sigmas_running += sigmas_running_epoch
-
-            offset_eps = 1e-8
-            sigmas = (sigmas_running + offset_eps) / (total_n_shots_count + offset_eps)
-            score.module.set_sigmas(sigmas)
 
         #print training epoch stats
         if args.rank == 0:
@@ -321,9 +242,6 @@ def train(args, config):
         #try to free up GPU memory
         del epoch_train_loss
         del num_samples
-        if config.model.sigma_dist == 'rtm_dynamic':
-            del total_n_shots_count_epoch
-            del sigmas_running_epoch
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -333,21 +251,10 @@ def train(args, config):
                 logging.info("\nSAVING CHECKPOINT\n\n")
                 checkpoint_start = time.time()
 
-                if config.model.sigma_dist == 'rtm_dynamic':
-                    np.savetxt(os.path.join(args.log_path, 'sigmas_{}.txt'.format(epoch)), sigmas.detach().cpu().numpy())
-                    np.savetxt(os.path.join(args.log_path, 'shot_count_{}.txt'.format(epoch)), total_n_shots_count.detach().cpu().numpy())
-                    np.savetxt(os.path.join(args.log_path, 'sigmas_running_{}.txt'.format(epoch)), sigmas_running.detach().cpu().numpy())
-
                 if config.model.ema:
-                    if config.model.sigma_dist == 'rtm_dynamic':
-                        checkpoint(args.log_path, score, optimizer, epoch, step, ema_helper, sigmas, total_n_shots_count, sigmas_running)
-                    else:
-                        checkpoint(args.log_path, score, optimizer, epoch, step, ema_helper)
+                    checkpoint(args.log_path, score, optimizer, epoch, step, ema_helper)
                 else:
-                    if config.model.sigma_dist == 'rtm_dynamic':
-                        checkpoint(args.log_path, score, optimizer, epoch, step, None, sigmas, total_n_shots_count, sigmas_running)
-                    else:
-                        checkpoint(args.log_path, score, optimizer, epoch, step)
+                    checkpoint(args.log_path, score, optimizer, epoch, step)
             
             if args.rank == 0:
                 logging.info("\n\nFINISHED CHECKPOINTING!\n\n")
@@ -388,17 +295,8 @@ def train(args, config):
                     batch = (X, y)
                 
                 with torch.no_grad():
-                    if config.model.sigma_dist == 'rtm':
-                        test_loss = rtm_loss(test_score, batch, n_shots, sigmas, \
-                                        dynamic_sigmas=False, anneal_power=config.training.anneal_power, val=True)
-                    elif config.model.sigma_dist == 'rtm_dynamic':
-                        test_loss, _, _ = supervised_conditional(test_score, batch, n_shots, sigmas, \
-                                                    dynamic_sigmas=True, anneal_power=config.training.anneal_power, val=True)
-                    elif config.model.sigma_dist == 'supervised':
-                        test_loss = supervised_loss(test_score, batch, anneal_power=config.training.anneal_power)
-                    else:
-                        test_loss = anneal_dsm_score_estimation(test_score, batch, sigmas, anneal_power=config.training.anneal_power)
-                
+                    test_loss = supervised_unconditional(score, batch)
+
                     epoch_test_loss += test_loss * X.shape[0]
                     num_samples += X.shape[0]
             
@@ -427,130 +325,6 @@ def train(args, config):
             #try to free up GPU memory
             del epoch_test_loss
             del num_samples
-            gc.collect()
-            torch.cuda.empty_cache()
-    
-        #check if we would like to sample from the score network
-        if (epoch + 1) % config.training.sample_freq == 0:
-            if args.rank == 0:
-                logging.info("\nSTARTING SAMPLING!\n\n")
-                sample_start = time.time()
-
-            #set the ema as the test model
-            if config.model.ema:
-                test_score = ema_helper.ema_copy(score)
-            else:
-                test_score = score
-            test_score.eval()
-
-            #prepare the initial samples for Langevin
-            num_test_samples = config.sampling.batch_size // args.world_size
-
-            #NOTE adding rectangle support
-            if isinstance(config.data.image_size, list):
-                H, W = config.data.image_size
-            else:
-                H = config.data.image_size
-                W = config.data.image_size
-                
-            init_samples = torch.rand(num_test_samples, config.data.channels, H, W, device=config.device)
-
-            if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
-                true_samples = torch.zeros(num_test_samples, config.data.channels, H, W, device=config.device)
-                slice_ids = torch.zeros(num_test_samples, device=config.device)
-                shot_idxs = torch.zeros(num_test_samples, device=config.device)
-                for i in range(num_test_samples):
-                    init_idx = i if config.data.dataset == 'RTM_N' else None #for Ibalt, we can't be sure that a given index will contain a desired k, so we choose it randomly
-                    init_k = config.sampling.shot_idx if config.data.dataset == 'RTM_N' else None
-                    X, y, X_perturbed, idx = test_loader.dataset.dataset.get_samples(index=init_idx, shot_idx=init_k)
-                    init_samples[i] = X_perturbed.to(config.device)
-                    true_samples[i] = X.to(config.device)
-                    slice_ids[i] = torch.tensor(y, device=config.device)
-                    shot_idxs[i] = torch.tensor(idx, device=config.device)
-            
-            #generate the samples
-            sigma_start_idx = 0
-            if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
-                sigma_start_idx = config.sampling.shot_idx
-            output_samples = anneal_Langevin_dynamics(x_mod=init_samples, scorenet=test_score, sigmas=sigmas[sigma_start_idx:],\
-                                n_steps_each=config.sampling.n_steps_each, step_lr=config.sampling.step_lr, \
-                                final_only=config.sampling.final_only, verbose=True if args.rank == 0 else False,\
-                                denoise=config.sampling.denoise, add_noise=config.sampling.add_noise)
-
-            #try to free up GPU memory
-            del test_score
-            gc.collect()
-            torch.cuda.empty_cache()
-
-            #compile all sampling stats and samples across GPUs
-            out_samples = [torch.zeros_like(output_samples[-1]) for _ in range(args.world_size)]
-            dist.all_gather(out_samples, output_samples[-1])
-
-            if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
-                in_samples = [torch.zeros_like(init_samples) for _ in range(args.world_size)]
-                dist.all_gather(in_samples, init_samples)
-
-                ground_truth_samples = [torch.zeros_like(true_samples) for _ in range(args.world_size)]
-                dist.all_gather(ground_truth_samples, true_samples)
-
-                slice_ids_all = [torch.zeros_like(slice_ids) for _ in range(args.world_size)]
-                dist.all_gather(slice_ids_all, slice_ids)
-
-                shot_idxs_all = [torch.zeros_like(shot_idxs) for _ in range(args.world_size)]
-                dist.all_gather(shot_idxs_all, shot_idxs)
-            
-            #reduce over the gathered stuff
-            if args.rank == 0:
-                output_samples = torch.cat(out_samples)
-                if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
-                    init_samples = torch.cat(in_samples)
-                    true_samples = torch.cat(ground_truth_samples)
-
-                    slice_ids = [slice_ids_all[i].detach().cpu().numpy() for i in range(len(slice_ids_all))]
-                    slice_ids = np.concatenate(slice_ids)
-
-                    shot_idxs = [shot_idxs_all[i].detach().cpu().numpy() for i in range(len(shot_idxs_all))]
-                    shot_idxs = np.concatenate(shot_idxs)
-            
-            #save and log and stuff
-            if args.rank == 0:
-                image_grid = make_grid(output_samples, 6)
-                save_image(image_grid, os.path.join(args.log_sample_path, 'output_samples_{}.png'.format(epoch)))
-                tb_logger.add_image('output_samples', image_grid, global_step=epoch)
-
-                if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
-                    mse = torch.nn.MSELoss()(output_samples, true_samples)
-
-                    tb_logger.add_scalar('sample_mse', mse.item(), global_step=epoch)
-                    logging.info("Sample MSE: {:.3f}".format(mse.item()))
-
-                    np.savetxt(os.path.join(args.log_sample_path, 'sample_slice_ids_{}.txt'.format(epoch)), slice_ids)
-                    np.savetxt(os.path.join(args.log_sample_path, 'sample_shot_idxs_{}.txt'.format(epoch)), shot_idxs)
-
-                    image_grid = make_grid(init_samples, 6)
-                    save_image(image_grid, os.path.join(args.log_sample_path, 'init_samples_{}.png'.format(epoch)))
-                    tb_logger.add_image('init_samples', image_grid, global_step=epoch)
-
-                    image_grid = make_grid(true_samples, 6)
-                    save_image(image_grid, os.path.join(args.log_sample_path, 'true_samples_{}.png'.format(epoch)))
-                    tb_logger.add_image('true_samples', image_grid, global_step=epoch)
-
-                logging.info("\n\nFINISHED SAMPLING!\n\n")
-                sample_end = time.time()
-                logging.info("SAMPLING TIME: " + str(timedelta(seconds=(sample_end-sample_start)//1)))
-
-            #try to free up GPU memory
-            del init_samples
-            del output_samples
-            del out_samples
-            if config.data.dataset in ['IBALT_RTM_N', 'RTM_N']:
-                del in_samples
-                del true_samples
-                del ground_truth_samples
-                del slice_ids
-                del slice_ids_all
-                del shot_idxs
-                del shot_idxs_all
             gc.collect()
             torch.cuda.empty_cache()
         

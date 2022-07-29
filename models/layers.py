@@ -7,6 +7,24 @@ from functools import partial
 import math
 import torch.nn.init as init
 
+def calc_padding(kernel_size=3, dilation=1):
+    """
+    New function to get correct padding for a given kernel size and dilation factor
+    """
+    if not (isinstance(kernel_size, int) or isinstance(kernel_size, tuple)):
+        return (0, 0)
+    if not (isinstance(dilation, int) or isinstance(dilation, tuple)):
+        return (0, 0)
+    
+    if isinstance(kernel_size, int):
+        kernel_size = (kernel_size, kernel_size)
+    if isinstance(dilation, int):
+        dilation = (dilation, dilation)
+    
+    p_0 = int(dilation[0] * (kernel_size[0] - 1) / 2)
+    p_1 = int(dilation[1] * (kernel_size[1] - 1) / 2)
+
+    return (p_0, p_1)
 
 def get_act(config):
     if config.model.nonlinearity.lower() == 'elu':
@@ -33,11 +51,13 @@ def conv1x1(in_planes, out_planes, stride=1, bias=True, spec_norm=False):
         conv = spectral_norm(conv)
     return conv
 
+#TODO change this to custom
+def conv3x3(in_planes, out_planes, kernel_size=3, stride=1, bias=True, spec_norm=False):
+    "3x3 convolution with padding. Can also specify custon kernel size"
+    padding = calc_padding(kernel_size=kernel_size)
 
-def conv3x3(in_planes, out_planes, stride=1, bias=True, spec_norm=False):
-    "3x3 convolution with padding"
-    conv = nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=1, bias=bias)
+    conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride,
+                     padding=padding, bias=bias)
     if spec_norm:
         conv = spectral_norm(conv)
 
@@ -51,9 +71,12 @@ def stride_conv3x3(in_planes, out_planes, kernel_size, bias=True, spec_norm=Fals
         conv = spectral_norm(conv)
     return conv
 
+#TODO alter this for custom architecture
+def dilated_conv3x3(in_planes, out_planes, dilation, kernel_size=3, bias=True, spec_norm=False):
+    "Convolution with padding and dilation. Can also specify custon kernel size"
+    padding = calc_padding(kernel_size=kernel_size, dilation=dilation)
 
-def dilated_conv3x3(in_planes, out_planes, dilation, bias=True, spec_norm=False):
-    conv = nn.Conv2d(in_planes, out_planes, kernel_size=3, padding=dilation, dilation=dilation, bias=bias)
+    conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, padding=padding, dilation=dilation, bias=bias)
     if spec_norm:
         conv = spectral_norm(conv)
 
@@ -287,17 +310,19 @@ class CondRefineBlock(nn.Module):
 
         return h
 
-
+#TODO alter this for custom architecture
 class ConvMeanPool(nn.Module):
     def __init__(self, input_dim, output_dim, kernel_size=3, biases=True, adjust_padding=False, spec_norm=False):
         super().__init__()
+        padding = calc_padding(kernel_size=kernel_size)
+
         if not adjust_padding:
-            conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride=1, padding=kernel_size // 2, bias=biases)
+            conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride=1, padding=padding, bias=biases)
             if spec_norm:
                 conv = spectral_norm(conv)
             self.conv = conv
         else:
-            conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride=1, padding=kernel_size // 2, bias=biases)
+            conv = nn.Conv2d(input_dim, output_dim, kernel_size, stride=1, padding=padding, bias=biases)
             if spec_norm:
                 conv = spectral_norm(conv)
 
@@ -399,7 +424,7 @@ class ConditionalResidualBlock(nn.Module):
 
 
 class ResidualBlock(nn.Module):
-    def __init__(self, input_dim, output_dim, resample=None, act=nn.ELU(),
+    def __init__(self, input_dim, output_dim, kernel_size=3, resample=None, act=nn.ELU(),
                  normalization=nn.BatchNorm2d, adjust_padding=False, dilation=None, spec_norm=False):
         super().__init__()
         self.non_linearity = act
@@ -409,28 +434,28 @@ class ResidualBlock(nn.Module):
         self.normalization = normalization
         if resample == 'down':
             if dilation is not None:
-                self.conv1 = dilated_conv3x3(input_dim, input_dim, dilation=dilation, spec_norm=spec_norm)
+                self.conv1 = dilated_conv3x3(input_dim, input_dim, kernel_size=kernel_size, dilation=dilation, spec_norm=spec_norm)
                 self.normalize2 = normalization(input_dim)
-                self.conv2 = dilated_conv3x3(input_dim, output_dim, dilation=dilation, spec_norm=spec_norm)
-                conv_shortcut = partial(dilated_conv3x3, dilation=dilation, spec_norm=spec_norm)
+                self.conv2 = dilated_conv3x3(input_dim, output_dim, kernel_size=kernel_size, dilation=dilation, spec_norm=spec_norm)
+                conv_shortcut = partial(dilated_conv3x3, kernel_size=kernel_size, dilation=dilation, spec_norm=spec_norm)
             else:
-                self.conv1 = conv3x3(input_dim, input_dim, spec_norm=spec_norm)
+                self.conv1 = conv3x3(input_dim, input_dim, kernel_size=kernel_size, spec_norm=spec_norm)
                 self.normalize2 = normalization(input_dim)
-                self.conv2 = ConvMeanPool(input_dim, output_dim, 3, adjust_padding=adjust_padding, spec_norm=spec_norm)
+                self.conv2 = ConvMeanPool(input_dim, output_dim, kernel_size=kernel_size, adjust_padding=adjust_padding, spec_norm=spec_norm)
                 conv_shortcut = partial(ConvMeanPool, kernel_size=1, adjust_padding=adjust_padding, spec_norm=spec_norm)
 
         elif resample is None:
             if dilation is not None:
-                conv_shortcut = partial(dilated_conv3x3, dilation=dilation, spec_norm=spec_norm)
-                self.conv1 = dilated_conv3x3(input_dim, output_dim, dilation=dilation, spec_norm=spec_norm)
+                conv_shortcut = partial(dilated_conv3x3, kernel_size=kernel_size, dilation=dilation, spec_norm=spec_norm)
+                self.conv1 = dilated_conv3x3(input_dim, output_dim, kernel_size=kernel_size, dilation=dilation, spec_norm=spec_norm)
                 self.normalize2 = normalization(output_dim)
-                self.conv2 = dilated_conv3x3(output_dim, output_dim, dilation=dilation, spec_norm=spec_norm)
+                self.conv2 = dilated_conv3x3(output_dim, output_dim, kernel_size=kernel_size, dilation=dilation, spec_norm=spec_norm)
             else:
                 # conv_shortcut = nn.Conv2d ### Something wierd here.
                 conv_shortcut = partial(conv1x1, spec_norm=spec_norm)
-                self.conv1 = conv3x3(input_dim, output_dim, spec_norm=spec_norm)
+                self.conv1 = conv3x3(input_dim, output_dim, kernel_size=kernel_size, spec_norm=spec_norm)
                 self.normalize2 = normalization(output_dim)
-                self.conv2 = conv3x3(output_dim, output_dim, spec_norm=spec_norm)
+                self.conv2 = conv3x3(output_dim, output_dim, kernel_size=kernel_size, spec_norm=spec_norm)
         else:
             raise Exception('invalid resample value')
 

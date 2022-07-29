@@ -93,6 +93,23 @@ def supervised_loss(scorenet, batch, anneal_power=2):
 
     return loss.mean(dim=0)
 
+def supervised_unconditional(scorenet, batch):
+    """
+    Calculates and returns a supervised l2 loss. No scaling or conditioning is used here!
+    """
+    X_243, slice_id, X_N, shot_idx = batch
+
+    #(2) Get score network output
+    scores = scorenet(X_N)
+    scores = scores.view(scores.shape[0], -1)
+
+    #(3) make and shape the target
+    target = X_243.view(X_243.shape[0], -1)
+
+    #(4) grab the loss
+    loss = 1 / 2. * ((scores - target) ** 2).sum(dim=-1)
+
+    return loss.mean(dim=0)
 
 def rtm_loss(scorenet, batch, n_shots, sigmas, dynamic_sigmas=False, anneal_power=2., val=False):
     """

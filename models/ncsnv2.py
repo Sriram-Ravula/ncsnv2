@@ -474,6 +474,7 @@ class NCSNv2_Custom(nn.Module):
         self.num_down_layers = self.config.architecture.num_downsample
         self.dilation_list = self.config.architecture.dilation
         self.channel_fac_list = self.config.architecture.channel_fac
+        self.kernel_sizes = self.config.architecture.kernel_size
         
         self.encoder = []
         self.decoder = []
@@ -485,6 +486,7 @@ class NCSNv2_Custom(nn.Module):
             ResidualBlock(self.ngf, self.ngf, resample=None, act=act,
                           normalization=self.norm)])
         )
+        #now go through all the residual and refine down/up sampling layers
         for i in range(self.num_down_layers):
             #encoder layers
             ngf_in = self.ngf * self.channel_fac_list[i-1] if i>0 else self.ngf
@@ -493,10 +495,12 @@ class NCSNv2_Custom(nn.Module):
             dilation = self.dilation_list[i]
             if dilation == 1:
                 dilation = None
+            
+            kernel_size = eval(self.kernel_sizes[i])
 
             self.encoder.append(   
                 nn.ModuleList([
-                    ResidualBlock(ngf_in, ngf_out, resample='down', act=act,
+                    ResidualBlock(ngf_in, ngf_out, kernel_size = kernel_size, resample='down', act=act, #NOTE we are letting the second block be 3x3 always
                                 normalization=self.norm, dilation=dilation),
                     ResidualBlock(ngf_out, ngf_out, resample=None, act=act,
                                 normalization=self.norm, dilation=dilation)])
@@ -515,7 +519,7 @@ class NCSNv2_Custom(nn.Module):
             self.decoder.append(
                 RefineBlock(ngf_in_list, dec_ngf_out, act=act, start=start)
             )
-
+        #first residual and last refine blocks are the same always
         self.decoder.append(
             RefineBlock([self.ngf, self.ngf], self.ngf, act=act, end=True)
         )
@@ -825,5 +829,117 @@ class NCSNv2Deepest2_supervised_unconditional(nn.Module):
             used_sigmas = sigmas
 
         output = output * used_sigmas
+
+        return output
+
+class NCSNv2Deepest2_Supervised_NoCondition(nn.Module):
+    def __init__(self, config):
+        """
+        This architecture is like Deepest2, except there is no notion of conditioning.
+        The output is not scaled whatsoever and has no side info about the value of k.
+        """
+        super().__init__()
+        self.logit_transform = config.data.logit_transform
+        self.rescaled = config.data.rescaled
+        self.norm = get_normalization(config, conditional=False)
+        self.ngf = ngf = config.model.ngf
+        self.num_classes = config.model.num_classes
+        self.act = act = get_act(config)
+        self.config = config
+
+        self.begin_conv = nn.Conv2d(config.data.channels, ngf, 3, stride=1, padding=1)
+        self.normalizer = self.norm(ngf, self.num_classes)
+
+        self.end_conv = nn.Conv2d(ngf, config.data.channels, 3, stride=1, padding=1)
+
+        self.res1 = nn.ModuleList([
+            ResidualBlock(self.ngf, self.ngf, resample=None, act=act,
+                          normalization=self.norm),
+            ResidualBlock(self.ngf, self.ngf, resample=None, act=act,
+                          normalization=self.norm)]
+        )
+
+        self.res2 = nn.ModuleList([
+            ResidualBlock(self.ngf, 2 * self.ngf, resample='down', act=act,
+                          normalization=self.norm),
+            ResidualBlock(2 * self.ngf, 2 * self.ngf, resample=None, act=act,
+                          normalization=self.norm)]
+        )
+
+        self.res3 = nn.ModuleList([
+            ResidualBlock(2 * self.ngf, 2 * self.ngf, resample='down', act=act,
+                          normalization=self.norm),
+            ResidualBlock(2 * self.ngf, 2 * self.ngf, resample=None, act=act,
+                          normalization=self.norm)]
+        )
+
+        self.res31 = nn.ModuleList([
+            ResidualBlock(2 * self.ngf, 2 * self.ngf, resample='down', act=act,
+                          normalization=self.norm),
+            ResidualBlock(2 * self.ngf, 2 * self.ngf, resample=None, act=act,
+                          normalization=self.norm)]
+        )
+
+        self.res32 = nn.ModuleList([
+            ResidualBlock(2 * self.ngf, 2 * self.ngf, resample='down', act=act,
+                          normalization=self.norm),
+            ResidualBlock(2 * self.ngf, 2 * self.ngf, resample=None, act=act,
+                          normalization=self.norm)]
+        )
+
+        self.res4 = nn.ModuleList([
+            ResidualBlock(2 * self.ngf, 4 * self.ngf, resample='down', act=act,
+                          normalization=self.norm, dilation=2),
+            ResidualBlock(4 * self.ngf, 4 * self.ngf, resample=None, act=act,
+                          normalization=self.norm, dilation=2)]
+        )
+
+        self.res5 = nn.ModuleList([
+            ResidualBlock(4 * self.ngf, 4 * self.ngf, resample='down', act=act,
+                          normalization=self.norm, dilation=4),
+            ResidualBlock(4 * self.ngf, 4 * self.ngf, resample=None, act=act,
+                          normalization=self.norm, dilation=4)]
+        )
+
+        self.refine1 = RefineBlock([4 * self.ngf], 4 * self.ngf, act=act, start=True)
+        self.refine2 = RefineBlock([4 * self.ngf, 4 * self.ngf], 2 * self.ngf, act=act)
+        self.refine3 = RefineBlock([2 * self.ngf, 2 * self.ngf], 2 * self.ngf, act=act)
+        self.refine31 = RefineBlock([2 * self.ngf, 2 * self.ngf], 2 * self.ngf, act=act)
+        self.refine32 = RefineBlock([2 * self.ngf, 2 * self.ngf], 2 * self.ngf, act=act)
+        self.refine4 = RefineBlock([2 * self.ngf, 2 * self.ngf], self.ngf, act=act)
+        self.refine5 = RefineBlock([self.ngf, self.ngf], self.ngf, act=act, end=True)
+
+    def _compute_cond_module(self, module, x):
+        for m in module:
+            x = m(x)
+        return x
+
+    def forward(self, x):
+        if not self.logit_transform and not self.rescaled:
+            h = 2 * x - 1.
+        else:
+            h = x
+
+        output = self.begin_conv(h)
+
+        layer1 = self._compute_cond_module(self.res1, output)
+        layer2 = self._compute_cond_module(self.res2, layer1)
+        layer3 = self._compute_cond_module(self.res3, layer2)
+        layer31 = self._compute_cond_module(self.res31, layer3)
+        layer32 = self._compute_cond_module(self.res32, layer31)
+        layer4 = self._compute_cond_module(self.res4, layer32)
+        layer5 = self._compute_cond_module(self.res5, layer4)
+
+        ref1 = self.refine1([layer5], layer5.shape[2:])
+        ref2 = self.refine2([layer4, ref1], layer4.shape[2:])
+        ref32 = self.refine32([layer32, ref2], layer32.shape[2:])
+        ref31 = self.refine31([layer31, ref32], layer31.shape[2:])
+        ref3 = self.refine3([layer3, ref31], layer3.shape[2:])
+        ref4 = self.refine4([layer2, ref3], layer2.shape[2:])
+        output = self.refine5([layer1, ref4], layer1.shape[2:])
+
+        output = self.normalizer(output)
+        output = self.act(output)
+        output = self.end_conv(output)
 
         return output
